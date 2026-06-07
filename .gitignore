@@ -1,0 +1,39 @@
+node_modules
+
+# Output
+.output
+.vercel
+.netlify
+.wrangler
+/.svelte-kit
+/build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*
+!.env.example
+!.env.test
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+coverage/
+*.log
+
+.vscode/
+.idea/
+
+# Local database
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Generated import artifacts
+imports/tmp/
+imports/cache/
+/scripts/debug/temp
