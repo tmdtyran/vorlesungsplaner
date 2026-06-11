@@ -37,3 +37,4 @@ data/*.sqlite3
 imports/tmp/
 imports/cache/
 /scripts/debug/temp
+/data

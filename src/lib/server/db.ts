@@ -1,54 +1,26 @@
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { Database } from "bun:sqlite";
 
-import fs from "node:fs";
-import path from "node:path";
-
-const dataDir = path.join(process.cwd(), "data");
-
-if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
-}
+mkdirSync("data", {
+    recursive: true
+});
 
 export const db = new Database(
-    path.join(dataDir, "data.db")
+    join("data", "data.db")
 );
 
 db.exec(`
-CREATE TABLE IF NOT EXISTS lectures (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    unibas_id INTEGER UNIQUE NOT NULL,
-
-    title TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS lecture_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    lecture_id INTEGER NOT NULL,
-
-    date TEXT NOT NULL,
-
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-
-    room TEXT,
-
-    FOREIGN KEY (lecture_id)
-      REFERENCES lectures(id)
-);
+PRAGMA journal_mode = WAL;
 `);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS lecture_catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-    hierarchy_key INTEGER UNIQUE NOT NULL,
-    unibas_id INTEGER UNIQUE NOT NULL,
-
-    course_number TEXT NOT NULL,
-    title TEXT NOT NULL,
-
+    hierarchy_key INTEGER UNIQUE,
+    unibas_id INTEGER UNIQUE,
+    course_number TEXT,
+    title TEXT,
     credits REAL,
     lecturer TEXT
 );
@@ -57,17 +29,38 @@ CREATE TABLE IF NOT EXISTS lecture_catalog (
 db.exec(`
 CREATE TABLE IF NOT EXISTS lecture_times (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-
     lecture_catalog_id INTEGER NOT NULL,
-
-    frequency TEXT NOT NULL,
-    weekday TEXT NOT NULL,
-
-    start_time TEXT NOT NULL,
-    end_time TEXT NOT NULL,
-
+    frequency TEXT,
+    weekday TEXT,
+    start_time TEXT,
+    end_time TEXT,
     FOREIGN KEY (lecture_catalog_id)
         REFERENCES lecture_catalog(id)
+        ON DELETE CASCADE
+);
+`);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS lecture_details (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unibas_id INTEGER UNIQUE,
+    course_number TEXT,
+    title TEXT,
+    raw_html TEXT,
+    imported_at TEXT
+);
+`);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS lecture_detail_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    lecture_detail_id INTEGER NOT NULL,
+    date TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    room TEXT,
+    FOREIGN KEY (lecture_detail_id)
+        REFERENCES lecture_details(id)
         ON DELETE CASCADE
 );
 `);
