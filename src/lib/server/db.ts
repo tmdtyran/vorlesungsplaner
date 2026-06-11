@@ -1,6 +1,17 @@
 import { Database } from "bun:sqlite";
 
-export const db = new Database("data.db");
+import fs from "node:fs";
+import path from "node:path";
+
+const dataDir = path.join(process.cwd(), "data");
+
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+}
+
+export const db = new Database(
+    path.join(dataDir, "data.db")
+);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS lectures (
@@ -31,9 +42,32 @@ CREATE TABLE IF NOT EXISTS lecture_events (
 db.exec(`
 CREATE TABLE IF NOT EXISTS lecture_catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    hierarchy_key INTEGER UNIQUE,
-    unibas_id INTEGER UNIQUE,
-    course_number TEXT,
-    title TEXT
+
+    hierarchy_key INTEGER UNIQUE NOT NULL,
+    unibas_id INTEGER UNIQUE NOT NULL,
+
+    course_number TEXT NOT NULL,
+    title TEXT NOT NULL,
+
+    credits REAL,
+    lecturer TEXT
+);
+`);
+
+db.exec(`
+CREATE TABLE IF NOT EXISTS lecture_times (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    lecture_catalog_id INTEGER NOT NULL,
+
+    frequency TEXT NOT NULL,
+    weekday TEXT NOT NULL,
+
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+
+    FOREIGN KEY (lecture_catalog_id)
+        REFERENCES lecture_catalog(id)
+        ON DELETE CASCADE
 );
 `);

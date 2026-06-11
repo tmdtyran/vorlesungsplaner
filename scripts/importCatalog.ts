@@ -59,6 +59,14 @@ async function getSubTree(parentId: number, level: number) {
 function saveCourse(node: any): boolean {
     const html = String(node.title ?? "");
 
+    const idMatch = html.match(/\?id=(\d+)/);
+
+    if (!idMatch) {
+        return false;
+    }
+
+    const unibasId = Number(idMatch[1]);
+
     const $ = cheerio.load(html);
 
     const text = $.root()
@@ -74,38 +82,106 @@ function saveCourse(node: any): boolean {
         return false;
     }
 
-    const idMatch = html.match(/\?id=(\d+)/);
-
-    if (!idMatch) {
-        return false;
-    }
-
-    const unibasId = Number(idMatch[1]);
-
     const courseNumber = match[1];
     const title = match[2];
 
+    const credits = Number(
+        match[3].replace(",", ".")
+    );
+
+    const spanText = $("span")
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+
+    let lecturer: string | null = null;
+
+    if (spanText) {
+        lecturer = spanText
+            .split(
+                /\s+-\s+|wöchentlich:|14-täglich:|monatlich:/
+            )[0]
+            .trim();
+
+        if (
+            !lecturer ||
+            lecturer === "-" ||
+            lecturer === "–"
+        ) {
+            lecturer = null;
+        }
+
+        if (
+            lecturer?.includes("Termine und Räume")
+        ) {
+            lecturer = null;
+        }
+    }
+
     db.prepare(`
-        INSERT OR REPLACE INTO lecture_catalog
+        INSERT INTO lecture_catalog
         (
             hierarchy_key,
             unibas_id,
             course_number,
-            title
+            title,
+            credits,
+            lecturer
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(unibas_id)
+        DO UPDATE SET
+            hierarchy_key = excluded.hierarchy_key,
+            course_number = excluded.course_number,
+            title = excluded.title,
+            credits = excluded.credits,
+            lecturer = excluded.lecturer
     `).run(
         node.key,
         unibasId,
         courseNumber,
-        title
+        title,
+        credits,
+        lecturer
     );
 
-    console.log(
-        unibasId,
-        courseNumber,
-        title
-    );
+    const lecture = db.prepare(`
+        SELECT id
+        FROM lecture_catalog
+        WHERE unibas_id = ?
+    `).get(unibasId) as { id: number };
+
+    db.prepare(`
+        DELETE FROM lecture_times
+        WHERE lecture_catalog_id = ?
+    `).run(lecture.id);
+
+    const scheduleRegex =
+        /(wöchentlich|14-täglich|monatlich):\s*(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag)\s+([0-9]{1,2}\.[0-9]{2})-([0-9]{1,2}\.[0-9]{2})/g;
+
+    let scheduleMatch;
+
+    while (
+        (scheduleMatch = scheduleRegex.exec(spanText))
+    ) {
+        db.prepare(`
+            INSERT INTO lecture_times
+            (
+                lecture_catalog_id,
+                frequency,
+                weekday,
+                start_time,
+                end_time
+            )
+            VALUES (?, ?, ?, ?, ?)
+        `).run(
+            lecture.id,
+            scheduleMatch[1],
+            scheduleMatch[2],
+            scheduleMatch[3],
+            scheduleMatch[4]
+        );
+    }
 
     return true;
 }
@@ -129,10 +205,18 @@ async function crawl(parentId: number, level: number) {
             continue;
         }
 
+        const folderName = cheerio
+            .load(String(child.title ?? ""))
+            .root()
+            .text()
+            .replace(/\s+/g, " ")
+            .trim();
+
         console.log(
             "DIR",
             "level=" + level,
-            "key=" + child.key
+            "key=" + child.key,
+            "name=" + folderName
         );
 
         await sleep(300);
@@ -156,9 +240,17 @@ const roots = await getRoot();
 
 for (const root of roots) {
 
+    const rootName = cheerio
+        .load(String(root.title ?? ""))
+        .root()
+        .text()
+        .replace(/\s+/g, " ")
+        .trim();
+
     console.log(
         "ROOT",
-        root.key
+        root.key,
+        rootName
     );
 
     await sleep(300);
