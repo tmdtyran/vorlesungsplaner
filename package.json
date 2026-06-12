@@ -15,7 +15,7 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
-    "catalog": "bun scripts/importCatalog.ts"
+		"catalog": "bun scripts/importCatalog.ts"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.1",
@@ -43,4 +43,3 @@
 		"cheerio": "^1.2.0"
 	}
 }
-
