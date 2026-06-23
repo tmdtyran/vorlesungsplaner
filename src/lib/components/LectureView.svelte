@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
+    import { activeSemester } from '$lib/stores/semester.svelte';
 
     let allLectures = $state<CatalogEntry[]>([]);
     let viewMode = $state<'flat' | 'hierarchy'>('flat');
@@ -9,23 +10,29 @@
     let selectedFromRight = $state(false);
     let loading = $state(false);
 
+    function semesterParams(): string {
+        return `periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`;
+    }
+
     async function loadLectures() {
         loading = true;
-        const mode = viewMode === 'hierarchy' ? '?mode=hierarchy' : '';
-        const res = await fetch(`/api/lectures${mode}`);
+        const mode = viewMode === 'hierarchy' ? 'hierarchy' : 'flat';
+        const res = await fetch(`/api/lectures?mode=${mode}&${semesterParams()}`);
         allLectures = await res.json();
         loading = false;
     }
 
     $effect(() => {
-        viewMode; // reactive dependency
+        viewMode;
+        activeSemester.periodeId;
+        activeSemester.lang;
         loadLectures();
     });
 
     async function fetchDetail(lecture: CatalogEntry): Promise<LectureDetail | null> {
         if (!lecture.unibas_id) return null;
         try {
-            const res = await fetch(`/api/lectures/${lecture.unibas_id}`);
+            const res = await fetch(`/api/lectures/${lecture.unibas_id}?${semesterParams()}`);
             if (!res.ok) return null;
             return await res.json();
         } catch {

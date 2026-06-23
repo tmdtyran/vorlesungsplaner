@@ -1,5 +1,6 @@
 <script lang="ts">
     import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
+    import { activeSemester } from '$lib/stores/semester.svelte';
 
     const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
 
@@ -78,7 +79,7 @@
         const missing = ids.filter(id => !loadedIds.has(id));
         if (missing.length === 0) return;
 
-        fetch(`/api/lectures/times?ids=${missing.join(',')}`)
+        fetch(`/api/lectures/times?ids=${missing.join(',')}&periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`)
             .then(r => r.json())
             .then((rows: TimeRow[]) => {
                 for (const id of missing) loadedIds.add(id);

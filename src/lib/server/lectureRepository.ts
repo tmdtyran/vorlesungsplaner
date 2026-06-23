@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { getDb } from "./db";
 
 export interface CatalogLecture {
     id: number;
@@ -37,29 +37,23 @@ export interface LectureDetailEvent {
     room: string;
 }
 
-export function getAllLectures(): CatalogLecture[] {
-    return db.prepare(`
-        SELECT * FROM lecture_catalog
-        ORDER BY title COLLATE NOCASE
-    `).all() as CatalogLecture[];
+export function getAllLectures(periodeId: string, lang: string): CatalogLecture[] {
+    const db = getDb(periodeId, lang);
+    return db.prepare(`SELECT * FROM lecture_catalog ORDER BY title COLLATE NOCASE`).all() as CatalogLecture[];
 }
 
-export function getLecturesHierarchy(): CatalogLecture[] {
-    return db.prepare(`
-        SELECT * FROM lecture_catalog
-        ORDER BY hierarchy_key
-    `).all() as CatalogLecture[];
+export function getLecturesHierarchy(periodeId: string, lang: string): CatalogLecture[] {
+    const db = getDb(periodeId, lang);
+    return db.prepare(`SELECT * FROM lecture_catalog ORDER BY hierarchy_key`).all() as CatalogLecture[];
 }
 
-export function getLectureDetail(unibasId: number): LectureDetail | null {
+export function getLectureDetail(unibasId: number, periodeId: string, lang: string): LectureDetail | null {
+    const db = getDb(periodeId, lang);
     const detail = db.prepare(`
-        SELECT
-            id, unibas_id, course_number, title,
+        SELECT id, unibas_id, course_number, title,
             language, semester, offered_by, faculty,
-            lecturers, assessment_format, assessment_details,
-            imported_at
-        FROM lecture_details
-        WHERE unibas_id = ?
+            lecturers, assessment_format, assessment_details, imported_at
+        FROM lecture_details WHERE unibas_id = ?
     `).get(unibasId) as Omit<LectureDetail, 'events'> | undefined;
 
     if (!detail) return null;
@@ -72,19 +66,4 @@ export function getLectureDetail(unibasId: number): LectureDetail | null {
     `).all(detail.id) as LectureDetailEvent[];
 
     return { ...detail, events };
-}
-
-export function getCatalogLectureByUnibasId(unibasId: number): CatalogLecture | null {
-    return db.prepare(`
-        SELECT * FROM lecture_catalog WHERE unibas_id = ?
-    `).get(unibasId) as CatalogLecture | null;
-}
-
-export function getDistinctSemesters(): string[] {
-    const rows = db.prepare(`
-        SELECT DISTINCT semester FROM lecture_details
-        WHERE semester IS NOT NULL
-        ORDER BY semester DESC
-    `).all() as { semester: string }[];
-    return rows.map(r => r.semester);
 }
