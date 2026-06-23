@@ -1,10 +1,24 @@
 import * as cheerio from "cheerio";
 
 export interface ImportedLecture {
+
     unibasId: number;
+
     courseNumber: string;
     title: string;
+
+    language: string | null;
+    semester: string | null;
+    offeredBy: string | null;
+    faculty: string | null;
+
+    lecturers: string | null;
+
+    assessmentFormat: string | null;
+    assessmentDetails: string | null;
+
     html: string;
+
     events: {
         date: string;
         startTime: string;
@@ -13,16 +27,56 @@ export interface ImportedLecture {
     }[];
 }
 
-function parseDate(dateString: string): string {
-    const parts = dateString.match(/\d+/g);
+function parseDate(
+    dateString: string
+): string {
 
-    if (!parts || parts.length < 3) {
+    const parts =
+        dateString.match(/\d+/g);
+
+    if (
+        !parts ||
+        parts.length < 3
+    ) {
         return dateString;
     }
 
-    const [day, month, year] = parts;
+    const [
+        day,
+        month,
+        year
+    ] = parts;
 
     return `${year}-${month}-${day}`;
+}
+
+function extractField(
+    $: cheerio.CheerioAPI,
+    label: string
+): string | null {
+
+    const row =
+        $("tr")
+            .filter((_, el) =>
+                $(el)
+                    .find("th")
+                    .text()
+                    .trim()
+                    .includes(label)
+            )
+            .first();
+
+    if (!row.length) {
+        return null;
+    }
+
+    const value =
+        row.find("td")
+            .text()
+            .replace(/\s+/g, " ")
+            .trim();
+
+    return value || null;
 }
 
 export async function importLecture(
@@ -31,49 +85,46 @@ export async function importLecture(
 
     let lastError: unknown;
 
-    for (let attempt = 1; attempt <= 10; attempt++) {
+    for (
+        let attempt = 1;
+        attempt <= 10;
+        attempt++
+    ) {
 
         try {
 
-            const response = await fetch(
-                `https://vorlesungsverzeichnis.unibas.ch/en/course-directory?id=${unibasId}`,
-                {
-                    headers: {
-                        "User-Agent":
-                            "Mozilla/5.0"
+            const response =
+                await fetch(
+                    `https://vorlesungsverzeichnis.unibas.ch/en/course-directory?id=${unibasId}`,
+                    {
+                        headers: {
+                            "User-Agent":
+                                "Mozilla/5.0"
+                        }
                     }
-                }
-            );
+                );
 
-            if (response.status === 429) {
+            if (
+                response.status === 429
+            ) {
 
-                const retryAfter =
-                    Number(
-                        response.headers.get(
-                            "Retry-After"
-                        )
-                    );
-
-                const waitMs = 1000;
-                /*
-                    Number.isFinite(retryAfter)
-                        ? retryAfter * 1000
-                        : Math.min(
-                            1000 * Math.pow(2, attempt),
-                            60000
-                        );
-                */
+                const waitMs =
+                    1000;
 
                 console.log(
                     `RATE LIMITED ${unibasId} - waiting ${waitMs}ms`
                 );
 
-                await Bun.sleep(waitMs);
+                await Bun.sleep(
+                    waitMs
+                );
 
                 continue;
             }
 
-            if (!response.ok) {
+            if (
+                !response.ok
+            ) {
                 throw new Error(
                     `HTTP ${response.status}`
                 );
@@ -82,116 +133,186 @@ export async function importLecture(
             const html =
                 await response.text();
 
-            const $ = cheerio.load(html);
+            const $ =
+                cheerio.load(html);
 
-            const rawTitle = $("h2")
-                .first()
-                .text()
-                .replace(/\s+/g, " ")
-                .trim();
+            const rawTitle =
+                $("h2")
+                    .first()
+                    .text()
+                    .replace(
+                        /\s+/g,
+                        " "
+                    )
+                    .trim();
 
             const courseNumber =
                 rawTitle.match(
                     /^(\d{5}-\d{2})/
                 )?.[1] ?? "";
 
-            const title = rawTitle
-                .replace(
-                    /^(\d{5}-\d{2})\s*-\s*/,
-                    ""
-                )
-                .trim();
+            const title =
+                rawTitle
+                    .replace(
+                        /^(\d{5}-\d{2})\s*-\s*/,
+                        ""
+                    )
+                    .trim();
 
-            const events = $("table tr")
-                .map((_, row) => {
+            const lecturers =
+                extractField(
+                    $,
+                    "Lecturer"
+                ) ??
+                extractField(
+                    $,
+                    "Lecturers"
+                );
 
-                    const cells = $(row)
-                        .find("td")
-                        .map((_, td) =>
-                            $(td)
-                                .text()
-                                .replace(
-                                    /\s+/g,
-                                    " "
+            const language =
+                extractField(
+                    $,
+                    "Language"
+                );
+
+            const semester =
+                extractField(
+                    $,
+                    "Semester"
+                );
+
+            const offeredBy =
+                extractField(
+                    $,
+                    "Offered by"
+                );
+
+            const faculty =
+                extractField(
+                    $,
+                    "Faculty"
+                );
+
+            const assessmentFormat =
+                extractField(
+                    $,
+                    "Assessment"
+                );
+
+            const assessmentDetails =
+                extractField(
+                    $,
+                    "Assessment details"
+                );
+
+            const events =
+                $("table tr")
+                    .map((_, row) => {
+
+                        const cells =
+                            $(row)
+                                .find("td")
+                                .map(
+                                    (_, td) =>
+                                        $(td)
+                                            .text()
+                                            .replace(
+                                                /\s+/g,
+                                                " "
+                                            )
+                                            .trim()
                                 )
-                                .trim()
-                        )
-                        .get();
+                                .get();
 
-                    if (cells.length < 3) {
-                        return null;
-                    }
+                        if (
+                            cells.length < 3
+                        ) {
+                            return null;
+                        }
 
-                    const [
-                        dateCell,
-                        timeCell,
-                        room
-                    ] = cells;
+                        const [
+                            dateCell,
+                            timeCell,
+                            room
+                        ] = cells;
 
-                    const parts =
-                        timeCell.split("-");
+                        const parts =
+                            timeCell.split(
+                                "-"
+                            );
 
-                    if (
-                        parts.length !== 2
-                    ) {
-                        return null;
-                    }
+                        if (
+                            parts.length !== 2
+                        ) {
+                            return null;
+                        }
 
-                    return {
-                        date: parseDate(
-                            dateCell
-                        ),
+                        return {
+                            date: parseDate(
+                                dateCell
+                            ),
 
-                        startTime:
-                            parts[0]
-                                .trim()
-                                .replace(
-                                    ".",
-                                    ":"
-                                ),
+                            startTime:
+                                parts[0]
+                                    .trim()
+                                    .replace(
+                                        ".",
+                                        ":"
+                                    ),
 
-                        endTime:
-                            parts[1]
-                                .trim()
-                                .replace(
-                                    ".",
-                                    ":"
-                                ),
+                            endTime:
+                                parts[1]
+                                    .trim()
+                                    .replace(
+                                        ".",
+                                        ":"
+                                    ),
 
-                        room
-                    };
-                })
-                .get()
-                .filter(Boolean);
+                            room
+                        };
+                    })
+                    .get()
+                    .filter(Boolean);
 
             await Bun.sleep(100);
 
             return {
                 unibasId,
+
                 courseNumber,
                 title,
+
+                language,
+                semester,
+                offeredBy,
+                faculty,
+
+                lecturers,
+
+                assessmentFormat,
+                assessmentDetails,
+
                 html,
+
                 events
             };
 
         } catch (error) {
 
-            lastError = error;
+            lastError =
+                error;
 
-            const waitMs = 1000;
-            /*
-                Math.min(
-                    1000 * Math.pow(2, attempt),
-                    60000
-                );
-            */
+            const waitMs =
+                1000;
 
             console.log(
                 `RETRY ${attempt}/10 ${unibasId} (${waitMs}ms)`,
                 error
             );
 
-            await Bun.sleep(waitMs);
+            await Bun.sleep(
+                waitMs
+            );
         }
     }
 

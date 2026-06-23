@@ -43,9 +43,22 @@ CREATE TABLE IF NOT EXISTS lecture_times (
 db.exec(`
 CREATE TABLE IF NOT EXISTS lecture_details (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+
     unibas_id INTEGER UNIQUE,
+
     course_number TEXT,
     title TEXT,
+
+    language TEXT,
+    semester TEXT,
+    offered_by TEXT,
+    faculty TEXT,
+
+    lecturers TEXT,
+
+    assessment_format TEXT,
+    assessment_details TEXT,
+
     raw_html TEXT,
     imported_at TEXT
 );
@@ -54,13 +67,50 @@ CREATE TABLE IF NOT EXISTS lecture_details (
 db.exec(`
 CREATE TABLE IF NOT EXISTS lecture_detail_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+
     lecture_detail_id INTEGER NOT NULL,
+
     date TEXT,
     start_time TEXT,
     end_time TEXT,
     room TEXT,
+
     FOREIGN KEY (lecture_detail_id)
         REFERENCES lecture_details(id)
         ON DELETE CASCADE
 );
 `);
+
+const columns =
+    db.prepare(`
+        PRAGMA table_info(lecture_details)
+    `).all() as any[];
+
+const existing =
+    new Set(
+        columns.map(
+            c => c.name
+        )
+    );
+
+const additions = [
+    ["language", "TEXT"],
+    ["semester", "TEXT"],
+    ["offered_by", "TEXT"],
+    ["faculty", "TEXT"],
+    ["lecturers", "TEXT"],
+    ["assessment_format", "TEXT"],
+    ["assessment_details", "TEXT"]
+];
+
+for (
+    const [name, type]
+    of additions
+) {
+    if (!existing.has(name)) {
+        db.exec(`
+            ALTER TABLE lecture_details
+            ADD COLUMN ${name} ${type}
+        `);
+    }
+}

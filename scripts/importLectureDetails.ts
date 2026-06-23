@@ -28,20 +28,66 @@ for (const row of rows) {
                 unibas_id,
                 course_number,
                 title,
+
+                language,
+                semester,
+                offered_by,
+                faculty,
+
+                lecturers,
+
+                assessment_format,
+                assessment_details,
+
                 raw_html,
                 imported_at
             )
-            VALUES (?, ?, ?, ?, datetime('now'))
+            VALUES
+            (
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?,
+                ?, ?,
+                ?, datetime('now')
+            )
             ON CONFLICT(unibas_id)
             DO UPDATE SET
+
                 course_number = excluded.course_number,
                 title = excluded.title,
+
+                language = excluded.language,
+                semester = excluded.semester,
+                offered_by = excluded.offered_by,
+                faculty = excluded.faculty,
+
+                lecturers = excluded.lecturers,
+
+                assessment_format =
+                    excluded.assessment_format,
+
+                assessment_details =
+                    excluded.assessment_details,
+
                 raw_html = excluded.raw_html,
                 imported_at = excluded.imported_at
         `).run(
+
             lecture.unibasId,
+
             lecture.courseNumber,
             lecture.title,
+
+            lecture.language,
+            lecture.semester,
+            lecture.offeredBy,
+            lecture.faculty,
+
+            lecture.lecturers,
+
+            lecture.assessmentFormat,
+            lecture.assessmentDetails,
+
             lecture.html
         );
 
@@ -66,6 +112,7 @@ for (const row of rows) {
         for (
             const event of lecture.events
         ) {
+
             db.prepare(`
                 INSERT INTO lecture_detail_events
                 (
@@ -75,7 +122,10 @@ for (const row of rows) {
                     end_time,
                     room
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES
+                (
+                    ?, ?, ?, ?, ?
+                )
             `).run(
                 detail.id,
                 event.date,
