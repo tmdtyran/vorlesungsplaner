@@ -1,20 +1,14 @@
 import { json } from '@sveltejs/kit';
-import { db } from '$lib/server/db';
+import { getLectureDetail } from '$lib/server/lectureRepository';
 
 export async function GET({ params }) {
-	const lecture = db
-		.prepare(`
-			SELECT *
-			FROM lectures
-			WHERE id = ?
-		`)
-		.get(params.id);
-
-	if (!lecture) {
-		return new Response('Not found', {
-			status: 404
-		});
-	}
-
-	return json(lecture);
+    const unibasId = parseInt(params.id);
+    if (isNaN(unibasId)) {
+        return new Response('Invalid ID', { status: 400 });
+    }
+    const detail = getLectureDetail(unibasId);
+    if (!detail) {
+        return new Response('Not found', { status: 404 });
+    }
+    return json(detail);
 }

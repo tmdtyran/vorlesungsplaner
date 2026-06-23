@@ -1,0 +1,308 @@
+<script lang="ts">
+    import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
+    import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
+
+    let allLectures = $state<CatalogEntry[]>([]);
+    let viewMode = $state<'flat' | 'hierarchy'>('flat');
+    let searchLeft = $state('');
+    let selectedDetail = $state<LectureDetail | null>(null);
+    let selectedFromRight = $state(false);
+    let loading = $state(false);
+
+    async function loadLectures() {
+        loading = true;
+        const mode = viewMode === 'hierarchy' ? '?mode=hierarchy' : '';
+        const res = await fetch(`/api/lectures${mode}`);
+        allLectures = await res.json();
+        loading = false;
+    }
+
+    $effect(() => {
+        viewMode; // reactive dependency
+        loadLectures();
+    });
+
+    async function fetchDetail(lecture: CatalogEntry): Promise<LectureDetail | null> {
+        if (!lecture.unibas_id) return null;
+        try {
+            const res = await fetch(`/api/lectures/${lecture.unibas_id}`);
+            if (!res.ok) return null;
+            return await res.json();
+        } catch {
+            return null;
+        }
+    }
+
+    async function selectLecture(lecture: CatalogEntry, fromRight = false) {
+        selectedFromRight = fromRight;
+        const detail = await fetchDetail(lecture);
+        selectedDetail = detail;
+    }
+
+    async function handleAdd(lecture: CatalogEntry, e: MouseEvent) {
+        e.stopPropagation();
+        const detail = await fetchDetail(lecture);
+        addLecture(lecture, detail);
+    }
+
+    function handleRemove(catalogId: number, e: MouseEvent) {
+        e.stopPropagation();
+        removeLecture(catalogId);
+    }
+
+    const filteredLeft = $derived(
+        allLectures
+            .filter(l => l.unibas_id !== null || viewMode === 'hierarchy')
+            .filter(l => {
+                if (!searchLeft) return true;
+                const q = searchLeft.toLowerCase();
+                return (
+                    l.title.toLowerCase().includes(q) ||
+                    (l.course_number ?? '').toLowerCase().includes(q) ||
+                    (l.lecturer ?? '').toLowerCase().includes(q)
+                );
+            })
+    );
+
+    // Build tree for hierarchy view
+    const hierarchyTree = $derived(() => {
+        if (viewMode !== 'hierarchy') return [];
+        const byKey = new Map<number, CatalogEntry & { children: any[] }>();
+        const roots: any[] = [];
+
+        for (const l of filteredLeft) {
+            byKey.set(l.hierarchy_key ?? l.id, { ...l, children: [] });
+        }
+
+        for (const node of byKey.values()) {
+            if (node.parent_key && byKey.has(node.parent_key)) {
+                byKey.get(node.parent_key)!.children.push(node);
+            } else {
+                roots.push(node);
+            }
+        }
+
+        return roots;
+    });
+
+    const weekdayMap: Record<string, string> = {
+        'Mo': 'Montag', 'Di': 'Dienstag', 'Mi': 'Mittwoch',
+        'Do': 'Donnerstag', 'Fr': 'Freitag', 'Sa': 'Samstag'
+    };
+</script>
+
+<div class="flex h-full flex-col gap-0">
+    <!-- Top bar -->
+    <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-white">
+        <div class="flex rounded-lg border border-slate-200 overflow-hidden">
+            <button
+                onclick={() => viewMode = 'flat'}
+                class="px-3 py-1.5 text-xs font-medium transition-colors
+                    {viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+            >≡ Liste</button>
+            <button
+                onclick={() => viewMode = 'hierarchy'}
+                class="px-3 py-1.5 text-xs font-medium transition-colors
+                    {viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+            >⊞ Hierarchie</button>
+        </div>
+        <div class="relative flex-1 max-w-sm">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <input
+                bind:value={searchLeft}
+                placeholder="Vorlesungen suchen..."
+                class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+            />
+        </div>
+        {#if loading}
+            <span class="text-xs text-slate-400">Laden…</span>
+        {:else}
+            <span class="text-xs text-slate-400">{filteredLeft.length} Vorlesungen</span>
+        {/if}
+    </div>
+
+    <!-- Main content area -->
+    <div class="flex flex-1 min-h-0">
+        <!-- Left scroll box: All lectures -->
+        <div class="flex flex-col flex-1 min-w-0 border-r border-slate-200">
+            <div class="flex-1 overflow-y-auto">
+                {#if loading}
+                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Lädt…</div>
+                {:else if filteredLeft.length === 0}
+                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
+                {:else if viewMode === 'flat'}
+                    {#each filteredLeft as lecture}
+                        {@const selected = isSelected(lecture.id)}
+                        <div
+                            role="button"
+                            tabindex="0"
+                            onclick={() => selectLecture(lecture, false)}
+                            onkeydown={(e) => e.key === 'Enter' && selectLecture(lecture, false)}
+                            class="group relative flex w-full cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-indigo-50"
+                        >
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-slate-800 truncate">{lecture.title}</p>
+                                {#if lecture.course_number || lecture.lecturer}
+                                    <p class="text-xs text-slate-500 truncate">
+                                        {lecture.course_number ?? ''}{lecture.course_number && lecture.lecturer ? ' · ' : ''}{lecture.lecturer ?? ''}
+                                    </p>
+                                {/if}
+                            </div>
+                            {#if lecture.credits}
+                                <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                                    {lecture.credits} KP
+                                </span>
+                            {/if}
+                            {#if !selected}
+                                <button
+                                    onclick={(e) => handleAdd(lecture, e)}
+                                    class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold transition-opacity hover:bg-indigo-700"
+                                    title="Zur Liste hinzufügen"
+                                >+</button>
+                            {:else}
+                                <span class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs" title="Bereits ausgewählt">✓</span>
+                            {/if}
+                        </div>
+                    {/each}
+                {:else}
+                    <!-- Hierarchy view: flat render with indentation -->
+                    {#each filteredLeft as lecture}
+                        {@const indent = (lecture.depth ?? 0) * 16}
+                        {@const isLeaf = lecture.unibas_id !== null}
+                        {@const selected = isSelected(lecture.id)}
+                        <div
+                            role="button"
+                            tabindex="0"
+                            onclick={() => isLeaf && selectLecture(lecture, false)}
+                            onkeydown={(e) => e.key === 'Enter' && isLeaf && selectLecture(lecture, false)}
+                            class="group relative flex w-full items-center gap-3 border-b border-slate-100 py-2.5 pr-4 text-left transition-colors
+                                {isLeaf ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-default bg-slate-50'}"
+                            style="padding-left: {16 + indent}px"
+                        >
+                            {#if !isLeaf}
+                                <span class="text-slate-400 text-xs mr-1">▶</span>
+                            {/if}
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm truncate {isLeaf ? 'font-medium text-slate-800' : 'font-semibold text-slate-700'}">{lecture.title}</p>
+                                {#if isLeaf && (lecture.course_number || lecture.lecturer)}
+                                    <p class="text-xs text-slate-500 truncate">
+                                        {lecture.course_number ?? ''}{lecture.course_number && lecture.lecturer ? ' · ' : ''}{lecture.lecturer ?? ''}
+                                    </p>
+                                {/if}
+                            </div>
+                            {#if lecture.credits}
+                                <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                                    {lecture.credits} KP
+                                </span>
+                            {/if}
+                            {#if isLeaf && !selected}
+                                <button
+                                    onclick={(e) => handleAdd(lecture, e)}
+                                    class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold transition-opacity hover:bg-indigo-700"
+                                >+</button>
+                            {:else if isLeaf && selected}
+                                <span class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs">✓</span>
+                            {/if}
+                        </div>
+                    {/each}
+                {/if}
+            </div>
+        </div>
+
+        <!-- Right scroll box: Selected lectures -->
+        <div class="flex flex-col w-72 shrink-0">
+            <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-slate-50">
+                <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Meine Auswahl</span>
+                <span class="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">{selectedLectures.length}</span>
+            </div>
+            <div class="flex-1 overflow-y-auto bg-slate-50">
+                {#if selectedLectures.length === 0}
+                    <div class="flex flex-col items-center justify-center h-32 text-slate-400 text-xs px-4 text-center gap-2">
+                        <span class="text-2xl">📋</span>
+                        Noch keine Vorlesungen ausgewählt. Klicke auf + um welche hinzuzufügen.
+                    </div>
+                {:else}
+                    {#each selectedLectures as sel}
+                        <div
+                            role="button"
+                            tabindex="0"
+                            onclick={() => selectLecture(sel.catalog, true)}
+                            onkeydown={(e) => e.key === 'Enter' && selectLecture(sel.catalog, true)}
+                            class="group relative flex w-full cursor-pointer items-center gap-3 border-b border-slate-200 px-4 py-3 text-left transition-colors hover:bg-indigo-50"
+                        >
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-medium text-slate-800 truncate">{sel.catalog.title}</p>
+                                {#if sel.catalog.course_number}
+                                    <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>
+                                {/if}
+                            </div>
+                            {#if sel.catalog.credits}
+                                <span class="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                                    {sel.catalog.credits} KP
+                                </span>
+                            {/if}
+                            <button
+                                onclick={(e) => handleRemove(sel.catalog.id, e)}
+                                class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-600 text-sm font-bold transition-opacity hover:bg-red-200"
+                                title="Entfernen"
+                            >−</button>
+                        </div>
+                    {/each}
+                {/if}
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail panel -->
+    {#if selectedDetail}
+        <div class="border-t border-slate-200 bg-slate-50 p-5 overflow-y-auto max-h-64">
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h3 class="text-base font-semibold text-slate-900">{selectedDetail.title}</h3>
+                    {#if selectedDetail.course_number}
+                        <p class="text-xs text-slate-500 mt-0.5">{selectedDetail.course_number}</p>
+                    {/if}
+                </div>
+                <button
+                    onclick={() => selectedDetail = null}
+                    class="text-slate-400 hover:text-slate-600 text-lg leading-none"
+                >×</button>
+            </div>
+            <div class="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm lg:grid-cols-4">
+                {#if selectedDetail.semester}
+                    <div><span class="text-xs text-slate-500 block">Semester</span>{selectedDetail.semester}</div>
+                {/if}
+                {#if selectedDetail.language}
+                    <div><span class="text-xs text-slate-500 block">Sprache</span>{selectedDetail.language}</div>
+                {/if}
+                {#if selectedDetail.faculty}
+                    <div><span class="text-xs text-slate-500 block">Fakultät</span>{selectedDetail.faculty}</div>
+                {/if}
+                {#if selectedDetail.offered_by}
+                    <div><span class="text-xs text-slate-500 block">Angeboten von</span>{selectedDetail.offered_by}</div>
+                {/if}
+                {#if selectedDetail.lecturers}
+                    <div class="col-span-2"><span class="text-xs text-slate-500 block">Dozierende</span>{selectedDetail.lecturers}</div>
+                {/if}
+                {#if selectedDetail.assessment_format}
+                    <div class="col-span-2"><span class="text-xs text-slate-500 block">Prüfungsform</span>{selectedDetail.assessment_format}</div>
+                {/if}
+            </div>
+            {#if selectedDetail.events?.length > 0}
+                <div class="mt-3">
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Termine</p>
+                    <div class="flex flex-wrap gap-2">
+                        {#each selectedDetail.events.slice(0, 8) as ev}
+                            <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-xs text-slate-700">
+                                {ev.date} · {ev.start_time}–{ev.end_time} · {ev.room}
+                            </span>
+                        {/each}
+                        {#if selectedDetail.events.length > 8}
+                            <span class="text-xs text-slate-400">+{selectedDetail.events.length - 8} weitere</span>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
+        </div>
+    {/if}
+</div>

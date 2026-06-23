@@ -1,22 +1,60 @@
 export interface Lecture {
     id: number;
     unibasId: number;
-
     title: string;
-
     lecturers?: string;
     credits?: number;
 }
 
 export interface LectureEvent {
     id?: number;
-
     lectureId: number;
-
     date: string;
-
     startTime: string;
     endTime: string;
-
     room: string;
+}
+
+export interface CatalogEntry {
+    id: number;
+    hierarchy_key: number | null;
+    unibas_id: number | null;
+    course_number: string | null;
+    title: string;
+    credits: number | null;
+    lecturer: string | null;
+    parent_key: number | null;
+    node_type: string | null;
+    depth: number;
+}
+
+export interface DetailEvent {
+    id: number;
+    date: string;
+    start_time: string;
+    end_time: string;
+    room: string;
+}
+
+export interface LectureDetail {
+    id: number;
+    unibas_id: number;
+    course_number: string | null;
+    title: string;
+    language: string | null;
+    semester: string | null;
+    offered_by: string | null;
+    faculty: string | null;
+    lecturers: string | null;
+    assessment_format: string | null;
+    assessment_details: string | null;
+    imported_at: string | null;
+    events: DetailEvent[];
+}
+
+export interface SelectedLecture {
+    catalog: CatalogEntry;
+    detail: LectureDetail | null;
+    selectedModuleIndex: number;
+    included: boolean;
 }
