@@ -28,29 +28,35 @@ function extractField(
     $: cheerio.CheerioAPI,
     label: string
 ): string | null {
+    for (const row of $("tr").toArray()) {
+        const cells =
+            $(row).find("td");
 
-    const row =
-        $("tr")
-            .filter((_, el) =>
-                $(el)
-                    .find("th")
+        if (cells.length < 2) {
+            continue;
+        }
+
+        const key =
+            $(cells[0])
+                .text()
+                .trim()
+                .replace(/\s+/g, " ");
+
+        if (
+            key.toLowerCase() ===
+            label.toLowerCase()
+        ) {
+            const value =
+                $(cells[1])
                     .text()
                     .trim()
-                    .includes(label)
-            )
-            .first();
+                    .replace(/\s+/g, " ");
 
-    if (!row.length) {
-        return null;
+            return value || null;
+        }
     }
 
-    const value =
-        row.find("td")
-            .text()
-            .replace(/\s+/g, " ")
-            .trim();
-
-    return value || null;
+    return null;
 }
 
 const rows =
@@ -105,19 +111,35 @@ for (const row of rows) {
         extractField($, "Lecturers");
 
     const language =
-        extractField($, "Language");
+        extractField(
+            $,
+            "Language of instruction"
+        );
 
     const semester =
-        extractField($, "Semester");
+        extractField(
+            $,
+            "Semester"
+        );
 
     const offeredBy =
-        extractField($, "Offered by");
+        extractField(
+            $,
+            "Offered by"
+        );
 
     const faculty =
-        extractField($, "Faculty");
+        extractField(
+            $,
+            "Responsible faculty"
+        );
+
 
     const assessmentFormat =
-        extractField($, "Assessment");
+        extractField(
+            $,
+            "Assessment format"
+        );
 
     const assessmentDetails =
         extractField(

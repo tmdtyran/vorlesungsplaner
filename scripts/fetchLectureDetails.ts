@@ -1,5 +1,5 @@
 import { db } from "../src/lib/server/db";
-import { importLecture } from "../src/lib/server/importer/unibas";
+import { fetchLectureHtml } from "../src/lib/server/importer/unibas";
 
 const rows = db.prepare(`
     SELECT unibas_id
@@ -17,8 +17,8 @@ for (const row of rows) {
 
     try {
 
-        const lecture =
-            await importLecture(
+        const html =
+            await fetchLectureHtml(
                 row.unibas_id
             );
 
@@ -39,7 +39,7 @@ for (const row of rows) {
                 imported_at = excluded.imported_at
         `).run(
             row.unibas_id,
-            lecture.html
+            html
         );
 
     } catch (error) {
