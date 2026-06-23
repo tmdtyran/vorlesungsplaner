@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Database } from "bun:sqlite";
+import Database from "better-sqlite3";
 
 mkdirSync("data", { recursive: true });
 
@@ -71,8 +71,8 @@ CREATE TABLE IF NOT EXISTS lecture_detail_events (
 
 // Migrations for existing DBs
 const catalogCols = db.prepare(`PRAGMA table_info(lecture_catalog)`).all() as any[];
-const catalogExisting = new Set(catalogCols.map(c => c.name));
-const catalogAdditions = [
+const catalogExisting = new Set(catalogCols.map((c: any) => c.name));
+const catalogAdditions: [string, string][] = [
     ["parent_key", "INTEGER"],
     ["node_type", "TEXT"],
     ["depth", "INTEGER DEFAULT 0"]
@@ -84,8 +84,8 @@ for (const [name, type] of catalogAdditions) {
 }
 
 const detailCols = db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[];
-const detailExisting = new Set(detailCols.map(c => c.name));
-const detailAdditions = [
+const detailExisting = new Set(detailCols.map((c: any) => c.name));
+const detailAdditions: [string, string][] = [
     ["language", "TEXT"],
     ["semester", "TEXT"],
     ["offered_by", "TEXT"],
