@@ -1,31 +1,46 @@
-import { json } from "@sveltejs/kit";
 import { getDb } from "$lib/server/db";
-import { fetchLectureHtml } from "$lib/server/importer/unibas";
 import { parseLectureDetails } from "$lib/server/importer/parser";
 
 export async function POST({ request }) {
     const body = await request.json();
     const { action, periodeId, lang } = body;
+    const BASE = "https://vorlesungsverzeichnis.unibas.ch";
+    const LANG_PAGE = lang === "de" ? "de/semesterprogramm" : "en/semester-program";
 
     const stream = new ReadableStream({
         async start(controller) {
-            const send = (msg: string) => {
+            const send = (msg: string) =>
                 controller.enqueue(new TextEncoder().encode(JSON.stringify({ log: msg }) + "\n"));
-            };
 
             try {
                 const db = getDb(periodeId ?? "default", lang ?? "de");
 
                 if (action === "catalogue") {
-                    send(`Importiere Katalog für Periode ${periodeId}, Sprache: ${lang}...`);
-                    send(`Ziel-Datenbank: data/${periodeId}_${lang}.db`);
-                    send(`Fetching root tree from UniBasel...`);
+                    send(`Importiere Katalog: periodeId=${periodeId}, lang=${lang}`);
+                    send(`Datenbank: data/${periodeId}_${lang}.db`);
 
-                    // Fetch and walk the tree inline (same logic as importCatalog.ts)
-                    const BASE_URL = "https://vorlesungsverzeichnis.unibas.ch";
+                    // Step 1: establish language session
+                    send(`Establishing ${lang} session...`);
+                    const sessionRes = await fetch(`${BASE}/${LANG_PAGE}`, {
+                        headers: { "User-Agent": "Mozilla/5.0" }
+                    });
+                    const rawCookies = sessionRes.headers.getSetCookie?.() ?? [];
+                    const cookieHeader = rawCookies.length > 0
+                        ? rawCookies.map((c: string) => c.split(";")[0]).join("; ")
+                        : (sessionRes.headers.get("set-cookie") ?? "").split(",").map((c: string) => c.trim().split(";")[0]).join("; ");
+
+                    send(cookieHeader ? `Session: ${cookieHeader.slice(0, 60)}...` : "Session: (kein Cookie — Server nutzt Referer)");
+
+                    const reqHeaders: Record<string, string> = {
+                        "User-Agent": "Mozilla/5.0",
+                        "Accept": "application/json, text/javascript, */*; q=0.01",
+                        "Accept-Language": lang === "de" ? "de-CH,de;q=0.9" : "en-US,en;q=0.9",
+                        "Referer": `${BASE}/${LANG_PAGE}`,
+                    };
+                    if (cookieHeader) reqHeaders["Cookie"] = cookieHeader;
 
                     async function fetchJson(url: string, attempt = 1): Promise<any> {
-                        const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+                        const res = await fetch(url, { headers: reqHeaders });
                         if (res.status === 429) {
                             await new Promise(r => setTimeout(r, attempt * 600));
                             return fetchJson(url, attempt + 1);
@@ -75,9 +90,9 @@ export async function POST({ request }) {
                             if (nodeCount % 100 === 0) send(`  ${nodeCount} Knoten verarbeitet...`);
 
                             if (node.lazy) {
-                                await new Promise(r => setTimeout(r, 80));
+                                await new Promise(r => setTimeout(r, 100));
                                 try {
-                                    const url = `${BASE_URL}/components/hierarchie.cfc?method=getSubTree&parentid=${node.key}&level=${depth+1}&period=${periodeId}&hid=`;
+                                    const url = `${BASE}/components/hierarchie.cfc?method=getSubTree&parentid=${node.key}&level=${depth+1}&period=${periodeId}&hid=`;
                                     const children = await fetchJson(url);
                                     if (children?.length) await processNodes(children, node.key, depth + 1);
                                 } catch (e: any) {
@@ -89,29 +104,29 @@ export async function POST({ request }) {
                         }
                     }
 
-                    const rootUrl = `${BASE_URL}/components/hierarchie.cfc?method=getTree&periodId=${periodeId}&hid=&_=${Date.now()}`;
+                    send("Fetching root tree...");
+                    const rootUrl = `${BASE}/components/hierarchie.cfc?method=getTree&periodId=${periodeId}&hid=&_=${Date.now()}`;
                     const rootNodes = await fetchJson(rootUrl);
                     send(`Root-Knoten: ${rootNodes.length}`);
                     await processNodes(rootNodes, null, 0);
 
                     const lectureCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-                    send(`✓ Katalog-Import abgeschlossen: ${nodeCount} Knoten, davon ${lectureCount} Vorlesungen.`);
+                    send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} Vorlesungen.`);
 
                 } else if (action === "lectures") {
                     const rows = db.prepare(
                         `SELECT unibas_id FROM lecture_catalog WHERE unibas_id IS NOT NULL`
                     ).all() as { unibas_id: number }[];
 
-                    send(`${rows.length} Vorlesungen gefunden in ${periodeId}_${lang}.db`);
+                    send(`${rows.length} Vorlesungen in data/${periodeId}_${lang}.db`);
 
+                    const langPath = lang === "de" ? "de/kursverzeichnis" : "en/course-directory";
                     let success = 0, failed = 0;
 
                     for (const row of rows) {
-                        send(`Fetching ${row.unibas_id}...`);
                         try {
-                            const langPath = lang === "de" ? "de/kursverzeichnis" : "en/course-directory";
                             const html = await fetch(
-                                `https://vorlesungsverzeichnis.unibas.ch/${langPath}?id=${row.unibas_id}`,
+                                `${BASE}/${langPath}?id=${row.unibas_id}`,
                                 { headers: { "User-Agent": "Mozilla/5.0" } }
                             ).then(r => r.text());
 
@@ -131,12 +146,10 @@ export async function POST({ request }) {
                                     assessment_format=excluded.assessment_format,
                                     assessment_details=excluded.assessment_details,
                                     raw_html=excluded.raw_html, imported_at=excluded.imported_at
-                            `).run(
-                                row.unibas_id, parsed.courseNumber, parsed.title,
+                            `).run(row.unibas_id, parsed.courseNumber, parsed.title,
                                 parsed.language, parsed.semester, parsed.offeredBy,
                                 parsed.faculty, parsed.lecturers, parsed.assessmentFormat,
-                                parsed.assessmentDetails, html
-                            );
+                                parsed.assessmentDetails, html);
 
                             const detail = db.prepare(
                                 `SELECT id FROM lecture_details WHERE unibas_id = ?`
@@ -151,7 +164,7 @@ export async function POST({ request }) {
                                 `).run(detail.id, ev.date, ev.startTime, ev.endTime, ev.room);
                             }
                             success++;
-                            send(`✓ ${row.unibas_id}: ${parsed.title}`);
+                            if (success % 10 === 0 || failed > 0) send(`✓ ${success}/${rows.length} — ${parsed.title}`);
                         } catch (err: any) {
                             failed++;
                             send(`✗ ${row.unibas_id}: ${err?.message ?? err}`);
@@ -162,7 +175,9 @@ export async function POST({ request }) {
                     send("Unbekannte Aktion.");
                 }
             } catch (err: any) {
-                controller.enqueue(new TextEncoder().encode(JSON.stringify({ log: `Fehler: ${err?.message ?? err}` }) + "\n"));
+                controller.enqueue(new TextEncoder().encode(
+                    JSON.stringify({ log: `Fehler: ${err?.message ?? err}` }) + "\n"
+                ));
             }
             controller.close();
         }
