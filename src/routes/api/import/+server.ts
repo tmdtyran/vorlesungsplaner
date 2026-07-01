@@ -67,23 +67,96 @@ export async function POST({ request }) {
                     db.exec(`DELETE FROM lecture_catalog`);
                     send("Bestehender Katalog gelöscht.");
 
+                    // UniBasel tree nodes carry no structured `data` object for lecture nodes —
+                    // course number, credits, unibas ID, lecturer and schedule are all embedded
+                    // as raw HTML inside `node.title`. We parse that string here.
+                    function parseLeafTitle(raw: string): {
+                        courseNumber: string;
+                        typeLabel: string;
+                        name: string;
+                        credits: number;
+                        unibasId: number | null;
+                        lecturer: string | null;
+                        timeSlots: { frequency: string; weekday: string; start: string; end: string }[];
+                    } | null {
+                        const decoded = raw
+                            .replace(/&amp;/g, '&')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#39;/g, "'");
+
+                        const headerMatch = decoded.match(
+                            /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*KP\)/
+                        );
+                        if (!headerMatch) return null;
+
+                        const courseNumber = headerMatch[1].trim();
+                        const typeLabel = headerMatch[2].trim();
+                        const name = headerMatch[3].trim();
+                        const credits = parseFloat(headerMatch[4].replace(',', '.'));
+
+                        const idMatch =
+                            decoded.match(/data-watchlist="(\d+)"/) ??
+                            decoded.match(/\?id=(\d+)/);
+                        const unibasId = idMatch ? parseInt(idMatch[1]) : null;
+
+                        const spanMatches = [...decoded.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)];
+                        let lecturer: string | null = null;
+                        const timeSlots: { frequency: string; weekday: string; start: string; end: string }[] = [];
+
+                        for (const sp of spanMatches) {
+                            const text = sp[1].replace(/\s+/g, ' ').trim();
+                            const dashIdx = text.indexOf(' - ');
+                            const lecturerPart = dashIdx >= 0 ? text.slice(0, dashIdx).trim() : text;
+                            const schedulePart = dashIdx >= 0 ? text.slice(dashIdx + 3).trim() : '';
+
+                            if (!lecturer && lecturerPart) lecturer = lecturerPart;
+
+                            if (schedulePart) {
+                                const freqMatch = schedulePart.match(/^([^:]+):\s*(.*)$/);
+                                const frequency = freqMatch ? freqMatch[1].trim() : '';
+                                const rest = freqMatch ? freqMatch[2] : schedulePart;
+
+                                const timeRegex = /([A-ZÄÖÜ][a-zäöüß]+)\s+(\d{2}[.:]\d{2})\s*-\s*(\d{2}[.:]\d{2})/g;
+                                let m: RegExpExecArray | null;
+                                while ((m = timeRegex.exec(rest)) !== null) {
+                                    timeSlots.push({
+                                        frequency,
+                                        weekday: m[1],
+                                        start: m[2].replace('.', ':'),
+                                        end: m[3].replace('.', ':')
+                                    });
+                                }
+                            }
+                        }
+
+                        return { courseNumber, typeLabel, name, credits, unibasId, lecturer, timeSlots };
+                    }
+
                     let nodeCount = 0;
 
                     async function processNodes(nodes: any[], parentKey: string | null, depth: number) {
                         for (const node of nodes) {
                             const hk = parseInt(node.key);
                             if (isNaN(hk)) continue;
-                            const d = node.data ?? {};
-                            const unibasId = d.unibasId ? Number(d.unibasId) : null;
-                            const credits = d.credits ? parseFloat(String(d.credits)) : null;
+
+                            const isLeaf = !node.lazy && !node.children?.length;
+                            const parsed = isLeaf ? parseLeafTitle(node.title) : null;
+
+                            const unibasId = parsed?.unibasId ?? null;
+                            const credits = parsed?.credits ?? null;
+                            const lecturer = parsed?.lecturer ?? null;
+                            const courseNumber = parsed?.courseNumber ?? null;
+                            const cleanTitle = parsed?.name ?? node.title;
                             const nodeType = node.lazy ? "folder" : (unibasId ? "lecture" : "group");
 
-                            insertNode.run(hk, unibasId, d.courseNumber ?? null, node.title,
-                                credits, d.lecturer ?? null,
+                            insertNode.run(hk, unibasId, courseNumber, cleanTitle,
+                                credits, lecturer,
                                 parentKey ? parseInt(parentKey) : null, nodeType, depth);
 
-                            if (unibasId && d.weekday && d.startTime && d.endTime) {
-                                insertTime.run(d.frequency ?? null, d.weekday, d.startTime, d.endTime, hk);
+                            if (unibasId && parsed) {
+                                for (const slot of parsed.timeSlots) {
+                                    insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
+                                }
                             }
 
                             nodeCount++;
@@ -111,7 +184,8 @@ export async function POST({ request }) {
                     await processNodes(rootNodes, null, 0);
 
                     const lectureCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-                    send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} Vorlesungen.`);
+                    const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any).n;
+                    send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} Vorlesungen erkannt, ${timeCount} Zeitslots.`);
 
                 } else if (action === "lectures") {
                     const rows = db.prepare(
