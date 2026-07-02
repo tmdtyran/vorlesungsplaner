@@ -204,7 +204,7 @@ export async function POST({ request }) {
 
                     send(`${rows.length} eindeutige Vorlesungen in data/${periodeId}_${lang}.db`);
 
-                    const langPath = lang === "de" ? "de/kursverzeichnis" : "en/course-directory";
+                    const langPath = lang === "de" ? "de/vorlesungsverzeichnis" : "en/course-directory";
                     let success = 0, failed = 0;
 
                     for (const row of rows) {

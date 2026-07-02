@@ -71,25 +71,64 @@
             })
     );
 
-    // Build tree for hierarchy view
-    const hierarchyTree = $derived(() => {
-        if (viewMode !== 'hierarchy') return [];
+    // Build a real parent/child tree from ALL rows (not the flat, arbitrarily
+    // hierarchy_key-sorted list) and flatten it via depth-first traversal so
+    // parents always render immediately before their children, with a
+    // correctly computed indentation depth.
+    function buildTree(rows: CatalogEntry[]) {
         const byKey = new Map<number, CatalogEntry & { children: any[] }>();
-        const roots: any[] = [];
-
-        for (const l of filteredLeft) {
-            byKey.set(l.hierarchy_key ?? l.id, { ...l, children: [] });
+        for (const l of rows) {
+            const key = l.hierarchy_key ?? l.id;
+            byKey.set(key, { ...l, children: [] });
         }
-
+        const roots: any[] = [];
         for (const node of byKey.values()) {
-            if (node.parent_key && byKey.has(node.parent_key)) {
+            if (node.parent_key !== null && node.parent_key !== undefined && byKey.has(node.parent_key)) {
                 byKey.get(node.parent_key)!.children.push(node);
             } else {
                 roots.push(node);
             }
         }
-
+        function sortRec(nodes: any[]) {
+            nodes.sort((a, b) => a.title.localeCompare(b.title));
+            for (const n of nodes) sortRec(n.children);
+        }
+        sortRec(roots);
         return roots;
+    }
+
+    // Prune branches that don't match the search query, but keep ancestor
+    // folders of any matching leaf so the path stays visible.
+    function filterTree(nodes: any[], query: string): any[] {
+        if (!query) return nodes;
+        const q = query.toLowerCase();
+        const result: any[] = [];
+        for (const node of nodes) {
+            const selfMatch =
+                node.title.toLowerCase().includes(q) ||
+                (node.course_number ?? '').toLowerCase().includes(q) ||
+                (node.lecturer ?? '').toLowerCase().includes(q);
+            const filteredChildren = filterTree(node.children ?? [], query);
+            if (selfMatch || filteredChildren.length > 0) {
+                result.push({ ...node, children: filteredChildren });
+            }
+        }
+        return result;
+    }
+
+    function flattenTree(nodes: any[], depth = 0, out: any[] = []): any[] {
+        for (const node of nodes) {
+            out.push({ ...node, depth });
+            if (node.children?.length) flattenTree(node.children, depth + 1, out);
+        }
+        return out;
+    }
+
+    const hierarchyFlatList = $derived(() => {
+        if (viewMode !== 'hierarchy') return [];
+        const roots = buildTree(allLectures);
+        const filtered = filterTree(roots, searchLeft);
+        return flattenTree(filtered);
     });
 
     const weekdayMap: Record<string, string> = {
@@ -124,7 +163,9 @@
         {#if loading}
             <span class="text-xs text-slate-400">Laden…</span>
         {:else}
-            <span class="text-xs text-slate-400">{filteredLeft.length} Vorlesungen</span>
+            <span class="text-xs text-slate-400">
+                {viewMode === 'hierarchy' ? hierarchyFlatList().length : filteredLeft.length} Vorlesungen
+            </span>
         {/if}
     </div>
 
@@ -135,7 +176,7 @@
             <div class="flex-1 overflow-y-auto">
                 {#if loading}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Lädt…</div>
-                {:else if filteredLeft.length === 0}
+                {:else if viewMode === 'hierarchy' ? hierarchyFlatList().length === 0 : filteredLeft.length === 0}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
                 {:else if viewMode === 'flat'}
                     {#each filteredLeft as lecture}
@@ -172,8 +213,8 @@
                         </div>
                     {/each}
                 {:else}
-                    <!-- Hierarchy view: flat render with indentation -->
-                    {#each filteredLeft as lecture}
+                    <!-- Hierarchy view: real tree, flattened via depth-first traversal -->
+                    {#each hierarchyFlatList() as lecture}
                         {@const indent = (lecture.depth ?? 0) * 16}
                         {@const isLeaf = lecture.unibas_id !== null}
                         {@const selected = isSelected(lecture.id)}
