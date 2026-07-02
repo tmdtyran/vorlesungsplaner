@@ -133,6 +133,7 @@ export async function POST({ request }) {
                     }
 
                     let nodeCount = 0;
+                    let insertErrors = 0;
 
                     async function processNodes(nodes: any[], parentKey: string | null, depth: number) {
                         for (const node of nodes) {
@@ -149,14 +150,22 @@ export async function POST({ request }) {
                             const cleanTitle = parsed?.name ?? node.title;
                             const nodeType = node.lazy ? "folder" : (unibasId ? "lecture" : "group");
 
-                            insertNode.run(hk, unibasId, courseNumber, cleanTitle,
-                                credits, lecturer,
-                                parentKey ? parseInt(parentKey) : null, nodeType, depth);
+                            // A single bad insert (e.g. duplicate hierarchy_key from a
+                            // malformed response) must never abort processing of
+                            // sibling nodes or their subtrees — wrap defensively.
+                            try {
+                                insertNode.run(hk, unibasId, courseNumber, cleanTitle,
+                                    credits, lecturer,
+                                    parentKey ? parseInt(parentKey) : null, nodeType, depth);
 
-                            if (unibasId && parsed) {
-                                for (const slot of parsed.timeSlots) {
-                                    insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
+                                if (unibasId && parsed) {
+                                    for (const slot of parsed.timeSlots) {
+                                        insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
+                                    }
                                 }
+                            } catch (e: any) {
+                                insertErrors++;
+                                send(`  ✗ Insert fehlgeschlagen für Knoten ${hk} ("${cleanTitle}"): ${e?.message}`);
                             }
 
                             nodeCount++;
@@ -169,7 +178,7 @@ export async function POST({ request }) {
                                     const children = await fetchJson(url);
                                     if (children?.length) await processNodes(children, node.key, depth + 1);
                                 } catch (e: any) {
-                                    send(`  ✗ Subtree ${node.key}: ${e?.message}`);
+                                    send(`  ✗ Subtree-Fetch ${node.key} fehlgeschlagen: ${e?.message}`);
                                 }
                             } else if (node.children?.length) {
                                 await processNodes(node.children, node.key, depth + 1);
@@ -183,16 +192,17 @@ export async function POST({ request }) {
                     send(`Root-Knoten: ${rootNodes.length}`);
                     await processNodes(rootNodes, null, 0);
 
-                    const lectureCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
+                    const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
+                    const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
                     const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any).n;
-                    send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} Vorlesungen erkannt, ${timeCount} Zeitslots.`);
+                    send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
 
                 } else if (action === "lectures") {
                     const rows = db.prepare(
-                        `SELECT unibas_id FROM lecture_catalog WHERE unibas_id IS NOT NULL`
+                        `SELECT DISTINCT unibas_id FROM lecture_catalog WHERE unibas_id IS NOT NULL`
                     ).all() as { unibas_id: number }[];
 
-                    send(`${rows.length} Vorlesungen in data/${periodeId}_${lang}.db`);
+                    send(`${rows.length} eindeutige Vorlesungen in data/${periodeId}_${lang}.db`);
 
                     const langPath = lang === "de" ? "de/kursverzeichnis" : "en/course-directory";
                     let success = 0, failed = 0;

@@ -174,6 +174,8 @@ function parseLeafTitle(raw: string): {
     return { courseNumber, typeLabel, name, credits, unibasId, lecturer, timeSlots };
 }
 
+let insertErrors = 0;
+
 async function processNodes(nodes: TreeNode[], parentKey: string | null, depth: number) {
     for (const node of nodes) {
         const hk = parseInt(node.key);
@@ -189,17 +191,24 @@ async function processNodes(nodes: TreeNode[], parentKey: string | null, depth: 
         const cleanTitle = parsed?.name ?? node.title;
         const nodeType = node.lazy ? "folder" : (unibasId ? "lecture" : "group");
 
-        insertNode.run(
-            hk, unibasId, courseNumber, cleanTitle,
-            credits, lecturer,
-            parentKey ? parseInt(parentKey) : null,
-            nodeType, depth
-        );
+        // A single bad insert must never abort processing of sibling nodes
+        // or their subtrees — wrap defensively.
+        try {
+            insertNode.run(
+                hk, unibasId, courseNumber, cleanTitle,
+                credits, lecturer,
+                parentKey ? parseInt(parentKey) : null,
+                nodeType, depth
+            );
 
-        if (unibasId && parsed) {
-            for (const slot of parsed.timeSlots) {
-                insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
+            if (unibasId && parsed) {
+                for (const slot of parsed.timeSlots) {
+                    insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
+                }
             }
+        } catch (err) {
+            insertErrors++;
+            console.error(`  Insert failed for node ${hk} ("${cleanTitle}"): ${err}`);
         }
 
         count++;
@@ -212,7 +221,7 @@ async function processNodes(nodes: TreeNode[], parentKey: string | null, depth: 
                 const children = await fetchJson(url);
                 if (children?.length) await processNodes(children, node.key, depth + 1);
             } catch (err) {
-                console.error(`  Failed subtree ${node.key}: ${err}`);
+                console.error(`  Failed subtree-fetch ${node.key}: ${err}`);
             }
         } else if (node.children?.length) {
             await processNodes(node.children, node.key, depth + 1);
@@ -227,5 +236,6 @@ console.log(`Root nodes: ${rootNodes.length}`);
 
 await processNodes(rootNodes, null, 0);
 
-const lectureCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-console.log(`\nDone. ${count} nodes total, ${lectureCount} lectures — data/${periodeId}_${lang}.db`);
+const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
+const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
+console.log(`\nDone. ${count} nodes total, ${lectureCount} unique lectures (${placementCount} tree placements incl. cross-listings) — data/${periodeId}_${lang}.db${insertErrors > 0 ? ` (${insertErrors} insert errors)` : ''}`);

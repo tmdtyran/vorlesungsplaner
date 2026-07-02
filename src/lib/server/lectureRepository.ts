@@ -39,7 +39,21 @@ export interface LectureDetailEvent {
 
 export function getAllLectures(periodeId: string, lang: string): CatalogLecture[] {
     const db = getDb(periodeId, lang);
-    return db.prepare(`SELECT * FROM lecture_catalog ORDER BY title COLLATE NOCASE`).all() as CatalogLecture[];
+    // A lecture can be cross-listed under multiple faculties/programs and thus
+    // appear at several hierarchy positions with the same unibas_id. The flat
+    // "all lectures" list should show each real lecture only once — folders/
+    // groups (unibas_id IS NULL) are left untouched since flat mode filters
+    // those out client-side anyway.
+    return db.prepare(`
+        SELECT * FROM lecture_catalog WHERE unibas_id IS NULL
+        UNION ALL
+        SELECT * FROM lecture_catalog WHERE id IN (
+            SELECT MIN(id) FROM lecture_catalog
+            WHERE unibas_id IS NOT NULL
+            GROUP BY unibas_id
+        )
+        ORDER BY title COLLATE NOCASE
+    `).all() as CatalogLecture[];
 }
 
 export function getLecturesHierarchy(periodeId: string, lang: string): CatalogLecture[] {

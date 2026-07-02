@@ -37,7 +37,7 @@ function initSchema(db: Database.Database) {
     CREATE TABLE IF NOT EXISTS lecture_catalog (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         hierarchy_key INTEGER UNIQUE,
-        unibas_id INTEGER UNIQUE,
+        unibas_id INTEGER,
         course_number TEXT,
         title TEXT,
         credits REAL,
@@ -46,6 +46,7 @@ function initSchema(db: Database.Database) {
         node_type TEXT,
         depth INTEGER DEFAULT 0
     );`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_lecture_catalog_unibas_id ON lecture_catalog(unibas_id);`);
 
     db.exec(`
     CREATE TABLE IF NOT EXISTS lecture_times (
@@ -94,5 +95,48 @@ function initSchema(db: Database.Database) {
     const detailCols = new Set((db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[]).map(c => c.name));
     for (const [col, type] of [['language','TEXT'],['semester','TEXT'],['offered_by','TEXT'],['faculty','TEXT'],['lecturers','TEXT'],['assessment_format','TEXT'],['assessment_details','TEXT']] as [string,string][]) {
         if (!detailCols.has(col)) db.exec(`ALTER TABLE lecture_details ADD COLUMN ${col} ${type}`);
+    }
+
+    // Migration: older DB files created lecture_catalog.unibas_id with a UNIQUE
+    // constraint. That's wrong — a lecture can be cross-listed under multiple
+    // faculties/programs in the tree, appearing at several hierarchy_keys with
+    // the same unibas_id. A UNIQUE constraint there caused inserts to throw and
+    // silently abort processing of entire sibling subtrees during catalog import.
+    // If we detect the old constraint, rebuild the table without it.
+    const tableSql = (db.prepare(
+        `SELECT sql FROM sqlite_master WHERE type='table' AND name='lecture_catalog'`
+    ).get() as { sql: string } | undefined)?.sql ?? "";
+
+    if (/unibas_id\s+INTEGER\s+UNIQUE/i.test(tableSql)) {
+        db.exec("BEGIN TRANSACTION;");
+        try {
+            db.exec(`ALTER TABLE lecture_catalog RENAME TO lecture_catalog_old;`);
+            db.exec(`
+                CREATE TABLE lecture_catalog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    hierarchy_key INTEGER UNIQUE,
+                    unibas_id INTEGER,
+                    course_number TEXT,
+                    title TEXT,
+                    credits REAL,
+                    lecturer TEXT,
+                    parent_key INTEGER,
+                    node_type TEXT,
+                    depth INTEGER DEFAULT 0
+                );
+            `);
+            db.exec(`
+                INSERT INTO lecture_catalog
+                    (id, hierarchy_key, unibas_id, course_number, title, credits, lecturer, parent_key, node_type, depth)
+                SELECT id, hierarchy_key, unibas_id, course_number, title, credits, lecturer, parent_key, node_type, depth
+                FROM lecture_catalog_old;
+            `);
+            db.exec(`DROP TABLE lecture_catalog_old;`);
+            db.exec(`CREATE INDEX IF NOT EXISTS idx_lecture_catalog_unibas_id ON lecture_catalog(unibas_id);`);
+            db.exec("COMMIT;");
+        } catch (err) {
+            db.exec("ROLLBACK;");
+            throw err;
+        }
     }
 }
