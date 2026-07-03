@@ -21,6 +21,7 @@ export interface CatalogEntry {
     unibas_id: number | null;
     course_number: string | null;
     title: string;
+    type_label: string | null;
     credits: number | null;
     lecturer: string | null;
     parent_key: number | null;

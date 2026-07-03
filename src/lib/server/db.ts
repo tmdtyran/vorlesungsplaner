@@ -59,6 +59,7 @@ function initSchema(db: Database.Database) {
         unibas_id INTEGER,
         course_number TEXT,
         title TEXT,
+        type_label TEXT,
         credits REAL,
         lecturer TEXT,
         parent_key INTEGER,
@@ -114,7 +115,7 @@ function initSchema(db: Database.Database) {
 
     // Migrations
     const catalogCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog)`).all() as any[]).map(c => c.name));
-    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0']] as [string,string][]) {
+    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0'],['type_label','TEXT']] as [string,string][]) {
         if (!catalogCols.has(col)) db.exec(`ALTER TABLE lecture_catalog ADD COLUMN ${col} ${type}`);
     }
     const detailCols = new Set((db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[]).map(c => c.name));
@@ -143,6 +144,7 @@ function initSchema(db: Database.Database) {
                     unibas_id INTEGER,
                     course_number TEXT,
                     title TEXT,
+                    type_label TEXT,
                     credits REAL,
                     lecturer TEXT,
                     parent_key INTEGER,
@@ -150,10 +152,12 @@ function initSchema(db: Database.Database) {
                     depth INTEGER DEFAULT 0
                 );
             `);
+            const oldCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog_old)`).all() as any[]).map(c => c.name));
+            const typeLabelSelect = oldCols.has('type_label') ? 'type_label' : 'NULL AS type_label';
             db.exec(`
                 INSERT INTO lecture_catalog
-                    (id, hierarchy_key, unibas_id, course_number, title, credits, lecturer, parent_key, node_type, depth)
-                SELECT id, hierarchy_key, unibas_id, course_number, title, credits, lecturer, parent_key, node_type, depth
+                    (id, hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth)
+                SELECT id, hierarchy_key, unibas_id, course_number, title, ${typeLabelSelect}, credits, lecturer, parent_key, node_type, depth
                 FROM lecture_catalog_old;
             `);
             db.exec(`DROP TABLE lecture_catalog_old;`);

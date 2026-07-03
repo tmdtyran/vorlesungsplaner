@@ -51,11 +51,12 @@ export async function POST({ request }) {
 
                     const insertNode = db.prepare(`
                         INSERT INTO lecture_catalog
-                            (hierarchy_key, unibas_id, course_number, title, credits, lecturer, parent_key, node_type, depth)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            (hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(hierarchy_key) DO UPDATE SET
                             unibas_id=excluded.unibas_id, course_number=excluded.course_number,
-                            title=excluded.title, credits=excluded.credits, lecturer=excluded.lecturer,
+                            title=excluded.title, type_label=excluded.type_label,
+                            credits=excluded.credits, lecturer=excluded.lecturer,
                             parent_key=excluded.parent_key, node_type=excluded.node_type, depth=excluded.depth
                     `);
                     const insertTime = db.prepare(`
@@ -66,6 +67,19 @@ export async function POST({ request }) {
                     db.exec(`DELETE FROM lecture_times`);
                     db.exec(`DELETE FROM lecture_catalog`);
                     send("Bestehender Katalog gelöscht.");
+
+                    // Folder/group node titles (e.g. "Vertiefungsrichtung: Computational
+                    // Biology<span data-search-hid="318347"></span>") also carry embedded
+                    // HTML — strip tags and decode entities for clean display.
+                    function stripHtml(raw: string): string {
+                        return raw
+                            .replace(/<[^>]*>/g, '')
+                            .replace(/&amp;/g, '&')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#39;/g, "'")
+                            .replace(/\s+/g, ' ')
+                            .trim();
+                    }
 
                     // UniBasel tree nodes carry no structured `data` object for lecture nodes —
                     // course number, credits, unibas ID, lecturer and schedule are all embedded
@@ -147,14 +161,15 @@ export async function POST({ request }) {
                             const credits = parsed?.credits ?? null;
                             const lecturer = parsed?.lecturer ?? null;
                             const courseNumber = parsed?.courseNumber ?? null;
-                            const cleanTitle = parsed?.name ?? node.title;
+                            const typeLabel = parsed?.typeLabel ?? null;
+                            const cleanTitle = parsed?.name ?? stripHtml(node.title);
                             const nodeType = node.lazy ? "folder" : (unibasId ? "lecture" : "group");
 
                             // A single bad insert (e.g. duplicate hierarchy_key from a
                             // malformed response) must never abort processing of
                             // sibling nodes or their subtrees — wrap defensively.
                             try {
-                                insertNode.run(hk, unibasId, courseNumber, cleanTitle,
+                                insertNode.run(hk, unibasId, courseNumber, cleanTitle, typeLabel,
                                     credits, lecturer,
                                     parentKey ? parseInt(parentKey) : null, nodeType, depth);
 
