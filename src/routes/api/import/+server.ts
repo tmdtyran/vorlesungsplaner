@@ -1,4 +1,4 @@
-import { getDb } from "$lib/server/db";
+import { getDb, setImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
 
 export async function POST({ request }) {
@@ -197,6 +197,12 @@ export async function POST({ request }) {
                     const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any).n;
                     send(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
 
+                    setImportMeta(db, {
+                        catalog_imported_at: new Date().toISOString(),
+                        catalog_node_count: String(nodeCount),
+                        catalog_lecture_count: String(lectureCount)
+                    });
+
                 } else if (action === "lectures") {
                     const rows = db.prepare(
                         `SELECT DISTINCT unibas_id FROM lecture_catalog WHERE unibas_id IS NOT NULL`
@@ -255,6 +261,12 @@ export async function POST({ request }) {
                         }
                     }
                     send(`Fertig: ${success} erfolgreich, ${failed} fehlgeschlagen.`);
+
+                    setImportMeta(db, {
+                        lectures_imported_at: new Date().toISOString(),
+                        lectures_success_count: String(success),
+                        lectures_total_count: String(rows.length)
+                    });
                 } else {
                     send("Unbekannte Aktion.");
                 }

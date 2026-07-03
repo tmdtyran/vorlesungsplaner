@@ -1,13 +1,44 @@
 <script lang="ts">
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
 
+    interface ImportStatusEntry {
+        periodeId: string;
+        lang: string;
+        catalogImportedAt: string | null;
+        catalogLectureCount: number | null;
+        lecturesImportedAt: string | null;
+        lecturesSuccessCount: number | null;
+        lecturesTotalCount: number | null;
+    }
+
     let logs = $state<string[]>([]);
     let loading = $state(false);
     let fetchingSemesters = $state(false);
+    let importStatus = $state<ImportStatusEntry[]>([]);
 
     // Local copies for import (can differ from active view semester)
     let importPeriodeId = $state(activeSemester.periodeId);
     let importLang = $state(activeSemester.lang);
+
+    function statusFor(periodeId: string, lang: string): ImportStatusEntry | null {
+        return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
+    }
+
+    async function loadStatus() {
+        try {
+            const res = await fetch('/api/import/status');
+            if (res.ok) importStatus = await res.json();
+        } catch {
+            // silently ignore — status panel just stays empty
+        }
+    }
+
+    function formatTimestamp(iso: string | null): string {
+        if (!iso) return '';
+        const d = new Date(iso);
+        return d.toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
+            ' ' + d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
+    }
 
     async function fetchSemesters() {
         fetchingSemesters = true;
@@ -65,9 +96,10 @@
             logs = [...logs, `Fehler: ${err?.message ?? err}`];
         }
         loading = false;
+        await loadStatus();
     }
 
-    // On mount: try to load cached semesters
+    // On mount: try to load cached semesters + import status
     $effect(() => {
         if (availableSemesters.length === 0) {
             fetch('/api/semesters')
@@ -80,6 +112,7 @@
                 })
                 .catch(() => {});
         }
+        loadStatus();
     });
 </script>
 
@@ -162,6 +195,66 @@
             </button>
         </div>
     </div>
+
+    <!-- Import status overview -->
+    {#if availableSemesters.length > 0}
+        <div class="rounded-xl border border-slate-200 overflow-hidden">
+            <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2">
+                <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Import-Status</span>
+                <span class="text-xs text-slate-400">— pro Semester &amp; Sprache</span>
+            </div>
+            <div class="max-h-48 overflow-y-auto">
+                <table class="w-full text-sm">
+                    <thead class="sticky top-0 bg-white border-b border-slate-200">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-slate-500">Semester</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">DE Katalog</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">DE Details</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">EN Katalog</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">EN Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each availableSemesters as s}
+                            {@const de = statusFor(s.periodeId, 'de')}
+                            {@const en = statusFor(s.periodeId, 'en')}
+                            <tr class="border-b border-slate-100 hover:bg-slate-50">
+                                <td class="px-4 py-2 text-slate-700">{s.label_de}</td>
+                                <td class="px-3 py-2 text-center" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : 'Noch nicht importiert'}>
+                                    {#if de?.catalogImportedAt}
+                                        <span class="text-emerald-600">✓</span>
+                                    {:else}
+                                        <span class="text-slate-300">—</span>
+                                    {/if}
+                                </td>
+                                <td class="px-3 py-2 text-center" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : 'Noch nicht importiert'}>
+                                    {#if de?.lecturesImportedAt}
+                                        <span class="text-emerald-600">✓</span>
+                                    {:else}
+                                        <span class="text-slate-300">—</span>
+                                    {/if}
+                                </td>
+                                <td class="px-3 py-2 text-center" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : 'Noch nicht importiert'}>
+                                    {#if en?.catalogImportedAt}
+                                        <span class="text-emerald-600">✓</span>
+                                    {:else}
+                                        <span class="text-slate-300">—</span>
+                                    {/if}
+                                </td>
+                                <td class="px-3 py-2 text-center" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : 'Noch nicht importiert'}>
+                                    {#if en?.lecturesImportedAt}
+                                        <span class="text-emerald-600">✓</span>
+                                    {:else}
+                                        <span class="text-slate-300">—</span>
+                                    {/if}
+                                </td>
+                            </tr>
+                        {/each}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    {/if}
 
     <!-- Log terminal -->
     <div class="flex flex-1 flex-col rounded-xl border border-slate-200 bg-slate-950 overflow-hidden">

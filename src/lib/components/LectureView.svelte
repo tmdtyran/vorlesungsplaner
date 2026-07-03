@@ -10,6 +10,18 @@
     let selectedFromRight = $state(false);
     let loading = $state(false);
 
+    // Hierarchy view: which folder nodes are expanded. Empty by default =
+    // everything collapsed, only root-level nodes visible until expanded.
+    let expandedKeys = $state<Set<number>>(new Set());
+
+    function toggleExpand(key: number, e: MouseEvent) {
+        e.stopPropagation();
+        const next = new Set(expandedKeys);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        expandedKeys = next;
+    }
+
     function semesterParams(): string {
         return `periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`;
     }
@@ -26,6 +38,7 @@
         viewMode;
         activeSemester.periodeId;
         activeSemester.lang;
+        expandedKeys = new Set();
         loadLectures();
     });
 
@@ -116,10 +129,23 @@
         return result;
     }
 
-    function flattenTree(nodes: any[], depth = 0, out: any[] = []): any[] {
+    function flattenTree(
+        nodes: any[],
+        expanded: Set<number>,
+        forceExpandAll: boolean,
+        depth = 0,
+        out: any[] = []
+    ): any[] {
         for (const node of nodes) {
-            out.push({ ...node, depth });
-            if (node.children?.length) flattenTree(node.children, depth + 1, out);
+            const key = node.hierarchy_key ?? node.id;
+            const hasChildren = (node.children?.length ?? 0) > 0;
+            const isExpanded = forceExpandAll || expanded.has(key);
+
+            out.push({ ...node, depth, hasChildren, isExpanded });
+
+            if (hasChildren && isExpanded) {
+                flattenTree(node.children, expanded, forceExpandAll, depth + 1, out);
+            }
         }
         return out;
     }
@@ -128,7 +154,10 @@
         if (viewMode !== 'hierarchy') return [];
         const roots = buildTree(allLectures);
         const filtered = filterTree(roots, searchLeft);
-        return flattenTree(filtered);
+        // While actively searching, auto-expand everything so matches under
+        // collapsed folders are visible; otherwise respect manual state.
+        const forceExpandAll = searchLeft.trim().length > 0;
+        return flattenTree(filtered, expandedKeys, forceExpandAll);
     });
 
     const weekdayMap: Record<string, string> = {
@@ -218,17 +247,21 @@
                         {@const indent = (lecture.depth ?? 0) * 16}
                         {@const isLeaf = lecture.unibas_id !== null}
                         {@const selected = isSelected(lecture.id)}
+                        {@const key = lecture.hierarchy_key ?? lecture.id}
                         <div
                             role="button"
                             tabindex="0"
-                            onclick={() => isLeaf && selectLecture(lecture, false)}
-                            onkeydown={(e) => e.key === 'Enter' && isLeaf && selectLecture(lecture, false)}
+                            onclick={(e) => isLeaf ? selectLecture(lecture, false) : (lecture.hasChildren && toggleExpand(key, e))}
+                            onkeydown={(e) => { if (e.key === 'Enter') { isLeaf ? selectLecture(lecture, false) : (lecture.hasChildren && toggleExpand(key, e)); } }}
                             class="group relative flex w-full items-center gap-3 border-b border-slate-100 py-2.5 pr-4 text-left transition-colors
-                                {isLeaf ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-default bg-slate-50'}"
+                                {isLeaf ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-pointer bg-slate-50 hover:bg-slate-100'}"
                             style="padding-left: {16 + indent}px"
                         >
                             {#if !isLeaf}
-                                <span class="text-slate-400 text-xs mr-1">▶</span>
+                                <span
+                                    class="text-slate-400 text-xs mr-1 inline-block transition-transform duration-150 {lecture.hasChildren ? '' : 'opacity-0'}"
+                                    style="transform: rotate({lecture.isExpanded ? 90 : 0}deg)"
+                                >▶</span>
                             {/if}
                             <div class="flex-1 min-w-0">
                                 <p class="text-sm truncate {isLeaf ? 'font-medium text-slate-800' : 'font-semibold text-slate-700'}">{lecture.title}</p>

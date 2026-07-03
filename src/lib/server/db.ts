@@ -32,6 +32,25 @@ export function getDefaultDb(): Database.Database {
 // Legacy export so existing imports still compile
 export const db = getDefaultDb();
 
+export function getImportMeta(db: Database.Database): Record<string, string> {
+    const rows = db.prepare(`SELECT key, value FROM import_meta`).all() as { key: string; value: string }[];
+    const out: Record<string, string> = {};
+    for (const r of rows) out[r.key] = r.value;
+    return out;
+}
+
+export function setImportMeta(db: Database.Database, entries: Record<string, string>) {
+    const stmt = db.prepare(`
+        INSERT INTO import_meta (key, value) VALUES (?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `);
+    for (const [key, value] of Object.entries(entries)) {
+        stmt.run(key, value);
+    }
+}
+
+export const DATA_DIR = "data";
+
 function initSchema(db: Database.Database) {
     db.exec(`
     CREATE TABLE IF NOT EXISTS lecture_catalog (
@@ -85,6 +104,12 @@ function initSchema(db: Database.Database) {
         end_time TEXT,
         room TEXT,
         FOREIGN KEY (lecture_detail_id) REFERENCES lecture_details(id) ON DELETE CASCADE
+    );`);
+
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS import_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT
     );`);
 
     // Migrations
