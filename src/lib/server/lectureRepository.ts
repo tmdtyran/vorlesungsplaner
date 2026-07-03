@@ -14,6 +14,13 @@ export interface CatalogLecture {
     depth: number;
 }
 
+export interface RecurringTime {
+    frequency: string | null;
+    weekday: string;
+    start_time: string;
+    end_time: string;
+}
+
 export interface LectureDetail {
     id: number;
     unibas_id: number;
@@ -28,6 +35,8 @@ export interface LectureDetail {
     assessment_details: string | null;
     imported_at: string | null;
     events: LectureDetailEvent[];
+    recurringTimes: RecurringTime[];
+    modules: string[];
 }
 
 export interface LectureDetailEvent {
@@ -62,6 +71,45 @@ export function getLecturesHierarchy(periodeId: string, lang: string): CatalogLe
     return db.prepare(`SELECT * FROM lecture_catalog ORDER BY hierarchy_key`).all() as CatalogLecture[];
 }
 
+export function getCatalogEntryByUnibasId(unibasId: number, periodeId: string, lang: string): CatalogLecture | null {
+    const db = getDb(periodeId, lang);
+    return db.prepare(`
+        SELECT * FROM lecture_catalog WHERE unibas_id = ? ORDER BY id LIMIT 1
+    `).get(unibasId) as CatalogLecture | null;
+}
+
+// A lecture can be cross-listed under multiple hierarchy branches. For each
+// placement, walk up parent_key to find ancestor nodes whose title marks a
+// "Modul" (module) grouping — these are the modules the lecture can be
+// assigned to. Uses a recursive CTE starting from every placement row.
+function getModulesForLecture(db: ReturnType<typeof getDb>, unibasId: number): string[] {
+    const rows = db.prepare(`
+        WITH RECURSIVE ancestors(id, hierarchy_key, parent_key, title) AS (
+            SELECT id, hierarchy_key, parent_key, title
+            FROM lecture_catalog WHERE unibas_id = ?
+            UNION ALL
+            SELECT lc.id, lc.hierarchy_key, lc.parent_key, lc.title
+            FROM lecture_catalog lc
+            JOIN ancestors a ON lc.hierarchy_key = a.parent_key
+        )
+        SELECT DISTINCT title FROM ancestors
+        WHERE title LIKE 'Modul:%' OR title LIKE 'Module:%'
+        ORDER BY title
+    `).all(unibasId) as { title: string }[];
+
+    return rows.map(r => r.title.replace(/^Modul(e)?:\s*/i, "").trim());
+}
+
+function getRecurringTimesForLecture(db: ReturnType<typeof getDb>, unibasId: number): RecurringTime[] {
+    return db.prepare(`
+        SELECT DISTINCT lt.frequency, lt.weekday, lt.start_time, lt.end_time
+        FROM lecture_times lt
+        JOIN lecture_catalog lc ON lc.id = lt.lecture_catalog_id
+        WHERE lc.unibas_id = ?
+        ORDER BY lt.weekday, lt.start_time
+    `).all(unibasId) as RecurringTime[];
+}
+
 export function getLectureDetail(unibasId: number, periodeId: string, lang: string): LectureDetail | null {
     const db = getDb(periodeId, lang);
     const detail = db.prepare(`
@@ -69,9 +117,34 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
             language, semester, offered_by, faculty,
             lecturers, assessment_format, assessment_details, imported_at
         FROM lecture_details WHERE unibas_id = ?
-    `).get(unibasId) as Omit<LectureDetail, 'events'> | undefined;
+    `).get(unibasId) as Omit<LectureDetail, 'events' | 'recurringTimes' | 'modules'> | undefined;
 
-    if (!detail) return null;
+    const modules = getModulesForLecture(db, unibasId);
+    const recurringTimes = getRecurringTimesForLecture(db, unibasId);
+
+    if (!detail) {
+        // No lecture_details row yet (details not imported), but we can
+        // still surface modules/recurring times derived from the catalog.
+        const catalogEntry = getCatalogEntryByUnibasId(unibasId, periodeId, lang);
+        if (!catalogEntry) return null;
+        return {
+            id: catalogEntry.id,
+            unibas_id: unibasId,
+            course_number: catalogEntry.course_number,
+            title: catalogEntry.title,
+            language: null,
+            semester: null,
+            offered_by: null,
+            faculty: null,
+            lecturers: catalogEntry.lecturer,
+            assessment_format: null,
+            assessment_details: null,
+            imported_at: null,
+            events: [],
+            recurringTimes,
+            modules
+        };
+    }
 
     const events = db.prepare(`
         SELECT id, date, start_time, end_time, room
@@ -80,5 +153,5 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
         ORDER BY date, start_time
     `).all(detail.id) as LectureDetailEvent[];
 
-    return { ...detail, events };
+    return { ...detail, events, recurringTimes, modules };
 }

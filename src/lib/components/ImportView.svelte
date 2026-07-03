@@ -11,17 +11,31 @@
         lecturesTotalCount: number | null;
     }
 
+    interface RunningJob {
+        action: 'catalogue' | 'lectures';
+        periodeId: string;
+        lang: string;
+    }
+
     let logs = $state<string[]>([]);
-    let loading = $state(false);
+    let jobStatus = $state<'idle' | 'running' | 'done' | 'error'>('idle');
+    let currentAction = $state<'catalogue' | 'lectures' | null>(null);
     let fetchingSemesters = $state(false);
     let importStatus = $state<ImportStatusEntry[]>([]);
+    let runningJobs = $state<RunningJob[]>([]);
 
-    // Local copies for import (can differ from active view semester)
     let importPeriodeId = $state(activeSemester.periodeId);
     let importLang = $state(activeSemester.lang);
 
+    let pollHandle: ReturnType<typeof setInterval> | null = null;
+    let logsSeen = 0;
+
     function statusFor(periodeId: string, lang: string): ImportStatusEntry | null {
         return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
+    }
+
+    function isJobRunning(action: 'catalogue' | 'lectures', periodeId: string, lang: string): boolean {
+        return runningJobs.some(j => j.action === action && j.periodeId === periodeId && j.lang === lang);
     }
 
     async function loadStatus() {
@@ -29,7 +43,13 @@
             const res = await fetch('/api/import/status');
             if (res.ok) importStatus = await res.json();
         } catch {
-            // silently ignore — status panel just stays empty
+            // silently ignore
+        }
+        try {
+            const res = await fetch('/api/import/jobs');
+            if (res.ok) runningJobs = await res.json();
+        } catch {
+            // silently ignore
         }
     }
 
@@ -40,38 +60,60 @@
             ' ' + d.toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' });
     }
 
+    function stopPolling() {
+        if (pollHandle) {
+            clearInterval(pollHandle);
+            pollHandle = null;
+        }
+    }
+
+    function startPolling(action: 'catalogue' | 'lectures', periodeId: string, lang: string) {
+        stopPolling();
+        currentAction = action;
+
+        const poll = async () => {
+            try {
+                const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=${logsSeen}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.logs?.length) {
+                    logs = [...logs, ...data.logs];
+                    logsSeen += data.logs.length;
+                }
+                jobStatus = data.status;
+                if (data.status !== 'running') {
+                    stopPolling();
+                    await loadStatus();
+                }
+            } catch {
+                // network hiccup — keep polling, next tick will retry
+            }
+        };
+
+        poll();
+        pollHandle = setInterval(poll, 800);
+    }
+
     async function fetchSemesters() {
         fetchingSemesters = true;
-        logs = ['Lade Semesterliste von vorlesungsverzeichnis.unibas.ch...'];
         try {
             const res = await fetch('/api/semesters?refresh=1');
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data: SemesterOption[] = await res.json();
-
-            // Update global store
             availableSemesters.splice(0, availableSemesters.length, ...data);
-
-            logs = [...logs, `✓ ${data.length} Semester geladen:`];
-            for (const s of data.slice(0, 8)) {
-                logs = [...logs, `  ${s.periodeId} → DE: ${s.label_de} / EN: ${s.label_en}`];
-            }
-            if (data.length > 8) logs = [...logs, `  ... und ${data.length - 8} weitere`];
-            logs = [...logs, 'Semester-Dropdowns aktualisiert.'];
-
-            // Set import selection to first available
             if (data.length > 0 && importPeriodeId === 'default') {
                 importPeriodeId = data[0].periodeId;
             }
-        } catch (err: any) {
-            logs = [...logs, `✗ Fehler: ${err?.message ?? err}`];
+        } catch {
+            // ignore — availableSemesters just stays whatever it was
         }
         fetchingSemesters = false;
     }
 
     async function runImport(action: 'catalogue' | 'lectures') {
-        loading = true;
-        logs = [`Starte ${action === 'catalogue' ? 'Katalog' : 'Vorlesungs'}-Import...`];
-        logs = [...logs, `Semester: ${importPeriodeId}, Sprache: ${importLang}`];
+        logs = [];
+        logsSeen = 0;
+        jobStatus = 'running';
 
         try {
             const response = await fetch('/api/import', {
@@ -79,27 +121,54 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, periodeId: importPeriodeId, lang: importLang })
             });
-
-            const reader = response.body?.getReader();
-            if (!reader) { logs = [...logs, 'Kein Stream.']; loading = false; return; }
-
-            const decoder = new TextDecoder();
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                for (const line of decoder.decode(value).split('\n').filter(Boolean)) {
-                    try { const p = JSON.parse(line); if (p.log) logs = [...logs, p.log]; }
-                    catch { logs = [...logs, line]; }
-                }
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                logs = [`Fehler: ${err.error ?? response.statusText}`];
+                jobStatus = 'error';
+                return;
             }
         } catch (err: any) {
-            logs = [...logs, `Fehler: ${err?.message ?? err}`];
+            logs = [`Fehler: ${err?.message ?? err}`];
+            jobStatus = 'error';
+            return;
         }
-        loading = false;
+
+        startPolling(action, importPeriodeId, importLang);
         await loadStatus();
     }
 
-    // On mount: try to load cached semesters + import status
+    // Whenever the semester/lang selection changes, check whether a job for
+    // either action is already running for that combo (e.g. started before
+    // a page reload, or from another tab) and resume showing its live logs.
+    async function checkForRunningJob() {
+        stopPolling();
+        for (const action of ['catalogue', 'lectures'] as const) {
+            try {
+                const res = await fetch(`/api/import?action=${action}&periodeId=${importPeriodeId}&lang=${importLang}`);
+                if (!res.ok) continue;
+                const data = await res.json();
+                if (data.status === 'running') {
+                    logs = data.logs ?? [];
+                    logsSeen = logs.length;
+                    jobStatus = 'running';
+                    startPolling(action, importPeriodeId, importLang);
+                    return;
+                }
+            } catch {
+                // ignore
+            }
+        }
+        logs = [];
+        logsSeen = 0;
+        jobStatus = 'idle';
+        currentAction = null;
+    }
+
+    $effect(() => {
+        importPeriodeId; importLang;
+        checkForRunningJob();
+    });
+
     $effect(() => {
         if (availableSemesters.length === 0) {
             fetch('/api/semesters')
@@ -113,15 +182,19 @@
                 .catch(() => {});
         }
         loadStatus();
+
+        // Keep the status overview fresh even when idle, so jobs started
+        // from a different browser tab still show up here.
+        const statusInterval = setInterval(loadStatus, 4000);
+        return () => clearInterval(statusInterval);
     });
 </script>
 
 <div class="flex h-full flex-col gap-5 p-6">
     <!-- Controls row -->
     <div class="flex flex-wrap items-end gap-4">
-        <!-- Fetch Semesters button -->
         <button
-            disabled={fetchingSemesters || loading}
+            disabled={fetchingSemesters}
             onclick={fetchSemesters}
             class="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
         >
@@ -135,7 +208,6 @@
 
         <div class="h-8 w-px bg-slate-200"></div>
 
-        <!-- Semester dropdown -->
         <div class="flex flex-col gap-1">
             <label class="text-xs font-medium text-slate-500 uppercase tracking-wide">Semester</label>
             {#if availableSemesters.length > 0}
@@ -159,7 +231,6 @@
             {/if}
         </div>
 
-        <!-- Language dropdown -->
         <div class="flex flex-col gap-1">
             <label class="text-xs font-medium text-slate-500 uppercase tracking-wide">Sprache</label>
             <select
@@ -171,24 +242,23 @@
             </select>
         </div>
 
-        <!-- Import buttons -->
         <div class="ml-auto flex gap-3">
             <button
-                disabled={loading || fetchingSemesters || importPeriodeId === 'default'}
+                disabled={jobStatus === 'running' || importPeriodeId === 'default'}
                 onclick={() => runImport('catalogue')}
                 class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-                {#if loading}
+                {#if jobStatus === 'running' && currentAction === 'catalogue'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 Import Catalogue
             </button>
             <button
-                disabled={loading || fetchingSemesters || importPeriodeId === 'default'}
+                disabled={jobStatus === 'running' || importPeriodeId === 'default'}
                 onclick={() => runImport('lectures')}
                 class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
-                {#if loading}
+                {#if jobStatus === 'running' && currentAction === 'lectures'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 Import All Lectures
@@ -220,29 +290,39 @@
                             {@const en = statusFor(s.periodeId, 'en')}
                             <tr class="border-b border-slate-100 hover:bg-slate-50">
                                 <td class="px-4 py-2 text-slate-700">{s.label_de}</td>
-                                <td class="px-3 py-2 text-center" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : 'Noch nicht importiert'}>
-                                    {#if de?.catalogImportedAt}
+
+                                <td class="px-3 py-2 text-center" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                    {#if isJobRunning('catalogue', s.periodeId, 'de')}
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                    {:else if de?.catalogImportedAt}
                                         <span class="text-emerald-600">✓</span>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : 'Noch nicht importiert'}>
-                                    {#if de?.lecturesImportedAt}
+                                <td class="px-3 py-2 text-center" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                    {#if isJobRunning('lectures', s.periodeId, 'de')}
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                    {:else if de?.lecturesImportedAt}
                                         <span class="text-emerald-600">✓</span>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : 'Noch nicht importiert'}>
-                                    {#if en?.catalogImportedAt}
+
+                                <td class="px-3 py-2 text-center" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                    {#if isJobRunning('catalogue', s.periodeId, 'en')}
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                    {:else if en?.catalogImportedAt}
                                         <span class="text-emerald-600">✓</span>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : 'Noch nicht importiert'}>
-                                    {#if en?.lecturesImportedAt}
+                                <td class="px-3 py-2 text-center" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                    {#if isJobRunning('lectures', s.periodeId, 'en')}
+                                        <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+                                    {:else if en?.lecturesImportedAt}
                                         <span class="text-emerald-600">✓</span>
                                     {:else}
                                         <span class="text-slate-300">—</span>
@@ -263,6 +343,11 @@
             <div class="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
             <div class="h-2.5 w-2.5 rounded-full bg-green-500"></div>
             <span class="ml-2 text-xs text-slate-500 font-mono">Import Log</span>
+            {#if jobStatus === 'running'}
+                <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
+                    <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> läuft…
+                </span>
+            {/if}
             {#if importPeriodeId !== 'default'}
                 <span class="ml-auto text-xs text-slate-600 font-mono">{importPeriodeId}_{importLang}.db</span>
             {/if}

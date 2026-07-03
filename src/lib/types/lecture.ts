@@ -37,6 +37,13 @@ export interface DetailEvent {
     room: string;
 }
 
+export interface RecurringTime {
+    frequency: string | null;
+    weekday: string;
+    start_time: string;
+    end_time: string;
+}
+
 export interface LectureDetail {
     id: number;
     unibas_id: number;
@@ -51,6 +58,8 @@ export interface LectureDetail {
     assessment_details: string | null;
     imported_at: string | null;
     events: DetailEvent[];
+    recurringTimes: RecurringTime[];
+    modules: string[];
 }
 
 export interface SelectedLecture {

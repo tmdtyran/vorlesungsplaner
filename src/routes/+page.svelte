@@ -3,7 +3,7 @@
     import LectureView from '$lib/components/LectureView.svelte';
     import CalendarView from '$lib/components/CalendarView.svelte';
     import ModuleView from '$lib/components/ModuleView.svelte';
-    import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
+    import { selectedLectures, loadSelectionsForSemester } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
 
     type Tab = 'import' | 'lectures' | 'calendar' | 'modules';
@@ -31,6 +31,18 @@
                     }
                 })
                 .catch(() => {});
+        }
+    });
+
+    // Central selection loading: runs once per periodeId/lang change and is
+    // shared by all tabs (Kursauswahl, Kalender, Module & KP), so the
+    // top-right semester/language switcher affects every view consistently.
+    // Selections are persisted (localStorage) and scoped per semester.
+    $effect(() => {
+        const periodeId = activeSemester.periodeId;
+        const lang = activeSemester.lang;
+        if (periodeId && periodeId !== 'default') {
+            loadSelectionsForSemester(periodeId, lang);
         }
     });
 

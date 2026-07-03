@@ -49,6 +49,13 @@ export function setImportMeta(db: Database.Database, entries: Record<string, str
     }
 }
 
+export function clearImportMeta(db: Database.Database, keys: string[]) {
+    const stmt = db.prepare(`DELETE FROM import_meta WHERE key = ?`);
+    for (const key of keys) {
+        stmt.run(key);
+    }
+}
+
 export const DATA_DIR = "data";
 
 function initSchema(db: Database.Database) {

@@ -1,29 +1,14 @@
 <script lang="ts">
     import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
 
-    // Parse modules from assessment_format or offered_by field
-    // For now we generate plausible module buckets from faculty/offered_by
-    function getModules(sel: typeof selectedLectures[0]): string[] {
-        const d = sel.detail;
-        if (!d) return ['Ohne Modul'];
-
-        const modules: string[] = [];
-
-        // Use offered_by as module groupings if available
-        if (d.offered_by) {
-            modules.push(d.offered_by);
-        }
-        if (d.faculty && d.faculty !== d.offered_by) {
-            modules.push(d.faculty);
-        }
-        // Add generic options
-        modules.push('Freie Leistungen');
-        if (modules.length === 1) modules.push('Hauptfach');
-
-        return modules;
+    // Real modules come from the hierarchy: ancestor nodes titled "Modul: ..."
+    // (fetched server-side per lecture). Fall back to a generic bucket only
+    // if a lecture genuinely has no module ancestors in the tree.
+    function getModules(sel: (typeof selectedLectures)[0]): string[] {
+        const mods = sel.detail?.modules ?? [];
+        return mods.length > 0 ? mods : ['Ohne Modul'];
     }
 
-    // Group by selected module for the summary
     const moduleCredits = $derived(() => {
         const map = new Map<string, number>();
         for (const sel of selectedLectures) {
@@ -57,11 +42,11 @@
                         <th class="w-10 px-4 py-3 text-left"></th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Vorlesung</th>
                         <th class="w-24 px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide">KP</th>
-                        <th class="w-56 px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Modul</th>
+                        <th class="w-64 px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Modul</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {#each selectedLectures as sel, i}
+                    {#each selectedLectures as sel}
                         {@const modules = getModules(sel)}
                         <tr class="border-b border-slate-100 transition-colors hover:bg-slate-50 {!sel.included ? 'opacity-50' : ''}">
                             <td class="px-4 py-3">

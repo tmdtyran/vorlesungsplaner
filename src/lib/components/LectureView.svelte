@@ -65,9 +65,9 @@
         addLecture(lecture, detail);
     }
 
-    function handleRemove(catalogId: number, e: MouseEvent) {
+    function handleRemove(unibasId: number | null, e: MouseEvent) {
         e.stopPropagation();
-        removeLecture(catalogId);
+        removeLecture(unibasId);
     }
 
     const filteredLeft = $derived(
@@ -209,7 +209,7 @@
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
                 {:else if viewMode === 'flat'}
                     {#each filteredLeft as lecture}
-                        {@const selected = isSelected(lecture.id)}
+                        {@const selected = isSelected(lecture.unibas_id)}
                         <div
                             role="button"
                             tabindex="0"
@@ -253,7 +253,7 @@
                     {#each hierarchyFlatList() as lecture}
                         {@const indent = (lecture.depth ?? 0) * 16}
                         {@const isLeaf = lecture.unibas_id !== null}
-                        {@const selected = isSelected(lecture.id)}
+                        {@const selected = isSelected(lecture.unibas_id)}
                         {@const key = lecture.hierarchy_key ?? lecture.id}
                         <div
                             role="button"
@@ -337,7 +337,7 @@
                                 </span>
                             {/if}
                             <button
-                                onclick={(e) => handleRemove(sel.catalog.id, e)}
+                                onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
                                 class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-600 text-sm font-bold transition-opacity hover:bg-red-200"
                                 title="Entfernen"
                             >−</button>
@@ -383,9 +383,21 @@
                     <div class="col-span-2"><span class="text-xs text-slate-500 block">Prüfungsform</span>{selectedDetail.assessment_format}</div>
                 {/if}
             </div>
+            {#if selectedDetail.recurringTimes?.length > 0}
+                <div class="mt-3">
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Regelmässigkeit</p>
+                    <div class="flex flex-wrap gap-2">
+                        {#each selectedDetail.recurringTimes as rt}
+                            <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-1 text-xs text-indigo-700 font-medium">
+                                {rt.frequency ? `${rt.frequency} ` : ''}{rt.weekday} {rt.start_time}–{rt.end_time}
+                            </span>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
             {#if selectedDetail.events?.length > 0}
                 <div class="mt-3">
-                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Termine</p>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Einzeltermine</p>
                     <div class="flex flex-wrap gap-2">
                         {#each selectedDetail.events.slice(0, 8) as ev}
                             <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-xs text-slate-700">
