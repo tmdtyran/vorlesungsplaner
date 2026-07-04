@@ -104,6 +104,7 @@
 
             if (times.length > 0) {
                 // Use lecture_times (recurring weekday slots)
+                const seen = new Set<string>();
                 for (const t of times) {
                     const day = dayFromString(t.weekday);
                     if (day === null) continue;
@@ -112,6 +113,10 @@
                     const endMin = parseTime(t.end_time) - START_HOUR * 60;
                     if (startMin < 0 || endMin <= startMin) continue;
                     if (endMin > TOTAL_HOURS * 60) continue;
+
+                    const key = `${day}-${startMin}-${endMin}`;
+                    if (seen.has(key)) continue;
+                    seen.add(key);
 
                     const timeLabel = `${t.start_time}–${t.end_time}`;
                     days[day].push({ title: sel.catalog.title, startMin, endMin, color: colorIdx.toString(), timeLabel });

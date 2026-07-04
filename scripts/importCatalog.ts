@@ -184,7 +184,17 @@ function parseLeafTitle(raw: string): {
         }
     }
 
-    return { courseNumber, typeLabel, name, credits, unibasId, lecturer, timeSlots };
+    // Some titles carry the same lecturer/schedule <span> twice (e.g.
+    // duplicate markup for responsive layouts) — dedupe identical slots.
+    const seenSlots = new Set<string>();
+    const uniqueTimeSlots = timeSlots.filter(t => {
+        const key = `${t.frequency}|${t.weekday}|${t.start}|${t.end}`;
+        if (seenSlots.has(key)) return false;
+        seenSlots.add(key);
+        return true;
+    });
+
+    return { courseNumber, typeLabel, name, credits, unibasId, lecturer, timeSlots: uniqueTimeSlots };
 }
 
 let insertErrors = 0;

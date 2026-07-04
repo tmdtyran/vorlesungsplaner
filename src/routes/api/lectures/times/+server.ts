@@ -14,7 +14,7 @@ export async function GET({ url }) {
     const placeholders = idList.map(() => "?").join(",");
 
     const rows = db.prepare(`
-        SELECT lt.lecture_catalog_id, lt.weekday, lt.start_time, lt.end_time, lt.frequency,
+        SELECT DISTINCT lt.lecture_catalog_id, lt.weekday, lt.start_time, lt.end_time, lt.frequency,
                lc.title, lc.unibas_id, lc.credits
         FROM lecture_times lt
         JOIN lecture_catalog lc ON lc.id = lt.lecture_catalog_id

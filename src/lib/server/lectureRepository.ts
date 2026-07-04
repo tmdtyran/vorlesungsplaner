@@ -12,6 +12,7 @@ export interface CatalogLecture {
     parent_key: number | null;
     node_type: string | null;
     depth: number;
+    schedule: string | null;
 }
 
 export interface RecurringTime {
@@ -47,6 +48,20 @@ export interface LectureDetailEvent {
     room: string;
 }
 
+// Correlated subquery producing a human-readable schedule summary
+// (e.g. "wöchentlich Montag 16:15-18:00") for a given lecture_catalog row.
+// DISTINCT guards against duplicate identical time-slot rows (e.g. from
+// titles that repeat the same schedule markup twice).
+const SCHEDULE_SUBQUERY = `(
+    SELECT GROUP_CONCAT(sched, ' | ') FROM (
+        SELECT DISTINCT
+            TRIM(COALESCE(frequency || ' ', '') || weekday || ' ' || start_time || '-' || end_time) AS sched
+        FROM lecture_times
+        WHERE lecture_catalog_id = lecture_catalog.id
+        ORDER BY weekday, start_time
+    )
+) AS schedule`;
+
 export function getAllLectures(periodeId: string, lang: string): CatalogLecture[] {
     const db = getDb(periodeId, lang);
     // A lecture can be cross-listed under multiple faculties/programs and thus
@@ -55,9 +70,9 @@ export function getAllLectures(periodeId: string, lang: string): CatalogLecture[
     // groups (unibas_id IS NULL) are left untouched since flat mode filters
     // those out client-side anyway.
     return db.prepare(`
-        SELECT * FROM lecture_catalog WHERE unibas_id IS NULL
+        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE unibas_id IS NULL
         UNION ALL
-        SELECT * FROM lecture_catalog WHERE id IN (
+        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE id IN (
             SELECT MIN(id) FROM lecture_catalog
             WHERE unibas_id IS NOT NULL
             GROUP BY unibas_id
@@ -68,13 +83,15 @@ export function getAllLectures(periodeId: string, lang: string): CatalogLecture[
 
 export function getLecturesHierarchy(periodeId: string, lang: string): CatalogLecture[] {
     const db = getDb(periodeId, lang);
-    return db.prepare(`SELECT * FROM lecture_catalog ORDER BY hierarchy_key`).all() as CatalogLecture[];
+    return db.prepare(`
+        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog ORDER BY hierarchy_key
+    `).all() as CatalogLecture[];
 }
 
 export function getCatalogEntryByUnibasId(unibasId: number, periodeId: string, lang: string): CatalogLecture | null {
     const db = getDb(periodeId, lang);
     return db.prepare(`
-        SELECT * FROM lecture_catalog WHERE unibas_id = ? ORDER BY id LIMIT 1
+        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE unibas_id = ? ORDER BY id LIMIT 1
     `).get(unibasId) as CatalogLecture | null;
 }
 

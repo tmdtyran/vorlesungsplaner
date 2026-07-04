@@ -27,6 +27,7 @@ export interface CatalogEntry {
     parent_key: number | null;
     node_type: string | null;
     depth: number;
+    schedule: string | null;
 }
 
 export interface DetailEvent {
