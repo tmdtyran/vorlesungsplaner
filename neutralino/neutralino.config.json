@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/main/schemas/neutralino.config.schema.json",
+  "applicationId": "ch.unibas.vorlesungsplaner",
+  "version": "0.1.0",
+  "defaultMode": "window",
+  "port": 0,
+  "url": "/",
+  "enableServer": true,
+  "enableNativeAPI": true,
+  "nativeAllowList": [
+    "app.*",
+    "os.execCommand",
+    "os.spawnProcess",
+    "os.updateSpawnedProcess",
+    "os.getSpawnedProcesses",
+    "os.getEnv",
+    "os.getPath",
+    "filesystem.*",
+    "events.*",
+    "window.*"
+  ],
+  "modes": {
+    "window": {
+      "title": "Vorlesungsplaner",
+      "width": 1280,
+      "height": 800,
+      "minWidth": 800,
+      "minHeight": 600,
+      "enableInspector": false
+    }
+  },
+  "cli": {
+    "binaryName": "vorlesungsplaner",
+    "resourcesPath": "/resources/",
+    "extensionsPath": "/extensions/",
+    "clientLibrary": "/neutralino.js",
+    "binaryVersion": "6.8.0",
+    "clientVersion": "6.8.0"
+  }
+}

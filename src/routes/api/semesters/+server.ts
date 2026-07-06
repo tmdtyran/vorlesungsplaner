@@ -1,5 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { DATA_DIR } from "$lib/server/db";
 
 export interface SemesterOption {
     periodeId: string;
@@ -7,7 +9,7 @@ export interface SemesterOption {
     label_en: string;
 }
 
-const CACHE_PATH = "data/semesters.json";
+const CACHE_PATH = join(DATA_DIR, "semesters.json");
 
 function loadCache(): SemesterOption[] | null {
     try {
@@ -59,7 +61,7 @@ async function fetchAndParse(): Promise<SemesterOption[]> {
     // Sort descending by periodeId (newest first)
     result.sort((a, b) => b.periodeId.localeCompare(a.periodeId));
 
-    mkdirSync("data", { recursive: true });
+    mkdirSync(DATA_DIR, { recursive: true });
     writeFileSync(CACHE_PATH, JSON.stringify(result, null, 2));
     return result;
 }

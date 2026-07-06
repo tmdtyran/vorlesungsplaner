@@ -2,7 +2,13 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-mkdirSync("data", { recursive: true });
+// Im Web-Betrieb (unveraendert) liegt "data/" relativ zum cwd des Servers.
+// Fuer die Desktop-Verpackung (Neutralino) setzen wir VORLESUNGSPLANER_DATA_DIR
+// auf einen echten, garantiert beschreibbaren Nutzerdatenordner (siehe
+// neutralino/resources/loader.js), damit nicht versehentlich unterhalb eines
+// schreibgeschuetzten Installationsverzeichnisses geschrieben wird.
+export const DATA_DIR = process.env.VORLESUNGSPLANER_DATA_DIR ?? "data";
+mkdirSync(DATA_DIR, { recursive: true });
 
 // The active DB is determined at request time via the semester/lang combo.
 // We keep a cache of open Database instances to avoid reopening constantly.
@@ -12,7 +18,7 @@ export function getDb(periodeId: string, lang: string): Database.Database {
     const key = `${periodeId}_${lang}`;
     if (dbCache.has(key)) return dbCache.get(key)!;
 
-    const db = new Database(join("data", `${key}.db`));
+    const db = new Database(join(DATA_DIR, `${key}.db`));
     db.exec(`PRAGMA journal_mode = WAL;`);
     initSchema(db);
     dbCache.set(key, db);
@@ -23,7 +29,7 @@ export function getDb(periodeId: string, lang: string): Database.Database {
 let _defaultDb: Database.Database | null = null;
 export function getDefaultDb(): Database.Database {
     if (_defaultDb) return _defaultDb;
-    _defaultDb = new Database(join("data", "default.db"));
+    _defaultDb = new Database(join(DATA_DIR, "default.db"));
     _defaultDb.exec(`PRAGMA journal_mode = WAL;`);
     initSchema(_defaultDb);
     return _defaultDb;
@@ -55,8 +61,6 @@ export function clearImportMeta(db: Database.Database, keys: string[]) {
         stmt.run(key);
     }
 }
-
-export const DATA_DIR = "data";
 
 function initSchema(db: Database.Database) {
     db.exec(`
