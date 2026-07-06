@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "defaultMode": "window",
   "port": 0,
+  "documentRoot": "/resources/",
   "url": "/",
   "enableServer": true,
   "enableNativeAPI": true,
@@ -33,7 +34,7 @@
     "binaryName": "vorlesungsplaner",
     "resourcesPath": "/resources/",
     "extensionsPath": "/extensions/",
-    "clientLibrary": "/neutralino.js",
+    "clientLibrary": "/resources/neutralino.js",
     "binaryVersion": "6.8.0",
     "clientVersion": "6.8.0"
   }

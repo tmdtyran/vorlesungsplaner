@@ -38,3 +38,5 @@ imports/tmp/
 imports/cache/
 /scripts/debug/temp
 /data
+neutralino/neutralino.d.ts
+neutralino/neutralino.js

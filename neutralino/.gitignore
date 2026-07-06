@@ -1,0 +1,14 @@
+# Von `neu update` heruntergeladen (Framework-Binaries, Client-Lib, Types)
+bin/
+resources/neutralino.js
+resources/neutralino.mjs
+resources/neutralino.d.ts
+
+# Von unserem Build-Skript erzeugte Server-Bundles (bun build --compile + client/-Kopie)
+server/
+
+# Von `neu build` erzeugte fertige Distributions-Bundles
+dist/
+
+# Interne Laufzeit-/Build-Temp-Dateien der Neutralino-CLI
+.tmp/

@@ -45,7 +45,15 @@ async function main() {
     }
 
     console.log("\n✓ Server-Bundles fertig unter neutralino/server/<platform>/");
-    console.log("  Weiter mit: cd neutralino && neu build");
+
+    if (process.argv.includes("--skip-neu-build")) {
+        console.log("  (--skip-neu-build gesetzt, überspringe `neu build`)");
+        return;
+    }
+
+    console.log("→ neu build (Neutralino-Bundles für Win/Mac/Linux)…");
+    await $`bunx neu build`.cwd("neutralino");
+    console.log("\n✓ Fertig. Bundles liegen unter neutralino/dist/vorlesungsplaner/");
 }
 
 main().catch((err) => {

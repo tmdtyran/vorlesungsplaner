@@ -16,11 +16,12 @@
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
 		"catalog": "bun scripts/importCatalog.ts",
-		"build:desktop-server": "bun scripts/build-desktop-server.ts",
-		"build:desktop": "bun run build:desktop-server && cd neutralino && neu build",
-		"dev:desktop": "cd neutralino && neu run"
+		"build:desktop-server": "bun scripts/build-desktop-server.ts --skip-neu-build",
+		"build:desktop": "bun scripts/build-desktop-server.ts",
+		"dev:desktop": "bun scripts/run-desktop-dev.ts"
 	},
 	"devDependencies": {
+		"@neutralinojs/neu": "^11.7.0",
 		"@eslint/js": "^10.0.1",
 		"@sveltejs/adapter-node": "^5.5.7",
 		"@sveltejs/kit": "^2.57.0",

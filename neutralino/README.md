@@ -24,33 +24,41 @@ Schließen des Fensters) erhalten bleibt.
 
 ## Einmalige Einrichtung
 
+`@neutralinojs/neu` ist bereits als devDependency in `package.json` eingetragen,
+kein globales Install nötig.
+
 ```bash
-npm install -g @neutralinojs/neu   # Neutralino-CLI (einmalig, global)
+bun install
 cd neutralino
-neu update                         # lädt die Framework-Binaries (Win/Mac/Linux)
+bunx neu update
+cd ..
 ```
+
+(Unter Windows/PowerShell funktioniert das genauso — nur `&&`-Verkettung
+in einer Zeile unterstützen ältere PowerShell-Versionen nicht. Einfach
+jeden Befehl einzeln bzw. mit Zeilenumbruch ausführen, wie oben gezeigt.)
 
 ## Entwickeln
 
 ```bash
 # Terminal 1: SvelteKit-Dev-Server wie gewohnt
-npm run dev
+bun run dev
 
 # Terminal 2: Neutralino-Fenster gegen den Dev-Server testen
 #   (dazu in neutralino/resources/app.js den PORT temporär auf den
 #    Vite-Dev-Port setzen, z.B. 5173, und den Kindprozess-Start
 #    überspringen)
-cd neutralino && neu run
+bun run dev:desktop
 ```
 
-Für den normalen Alltag reicht `npm run dev` im Browser – die
+Für den normalen Alltag reicht `bun run dev` im Browser – die
 Neutralino-Hülle muss nur getestet werden, wenn sich an der Verpackung
 selbst etwas ändert.
 
 ## Production-Build (alle 3 Desktop-Plattformen in einem Schritt)
 
 ```bash
-npm run build:desktop
+bun run build:desktop
 ```
 
 Das macht:
