@@ -15,6 +15,7 @@
     "os.updateSpawnedProcess",
     "os.getSpawnedProcesses",
     "os.getEnv",
+    "os.getEnvs",
     "os.getPath",
     "filesystem.*",
     "events.*",
@@ -27,7 +28,7 @@
       "height": 800,
       "minWidth": 800,
       "minHeight": 600,
-      "enableInspector": false
+      "enableInspector": true
     }
   },
   "cli": {
