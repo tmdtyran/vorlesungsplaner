@@ -1,13 +1,43 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
 // Im Web-Betrieb (unveraendert) liegt "data/" relativ zum cwd des Servers.
-// Fuer die Desktop-Verpackung (Neutralino) setzen wir VORLESUNGSPLANER_DATA_DIR
-// auf einen echten, garantiert beschreibbaren Nutzerdatenordner (siehe
-// neutralino/resources/loader.js), damit nicht versehentlich unterhalb eines
-// schreibgeschuetzten Installationsverzeichnisses geschrieben wird.
-export const DATA_DIR = process.env.VORLESUNGSPLANER_DATA_DIR ?? "data";
+// Fuer die Desktop-Verpackung (Neutralino) braucht der Server einen echten,
+// garantiert beschreibbaren Nutzerdatenordner statt eines relativen Pfads
+// (sonst wird ggf. versucht, unterhalb eines schreibgeschuetzten
+// Installationsverzeichnisses zu schreiben).
+//
+// Neutralinos os.spawnProcess unterstuetzt (Stand aktueller Doku) leider
+// KEINE Umgebungsvariablen fuer den Kindprozess (nur execCommand kann das).
+// Ein Versuch, eine Konfigurationsdatei neben die Server-Binary zu
+// schreiben, scheiterte zudem mit NE_FS_FILWRER (Installationsverzeichnisse
+// sind zurecht nicht beschreibbar). Deshalb uebergibt
+// neutralino/resources/app.js das Zielverzeichnis stattdessen als simples
+// CLI-Argument beim Start, das wir hier ueber process.argv auslesen.
+// VORLESUNGSPLANER_DATA_DIR bzw. die datadir.txt-Datei bleiben als
+// zusaetzliche Wege bestehen (z.B. fuer andere Wrapper, die Env-Variablen
+// oder beschreibbare Installationsordner unterstuetzen).
+function resolveDataDir(): string {
+    if (process.env.VORLESUNGSPLANER_DATA_DIR) {
+        return process.env.VORLESUNGSPLANER_DATA_DIR;
+    }
+
+    // process.argv enthält im Web-Betrieb ("node build/index.js") normalerweise
+    // [execPath, scriptPath, ...args] - ein rein positionelles Argument wäre
+    // hier mehrdeutig mit dem Skriptpfad selbst. Deshalb ein eindeutiges Flag.
+    const dataDirArg = process.argv.find((arg) => arg.startsWith("--data-dir="));
+    if (dataDirArg) return dataDirArg.slice("--data-dir=".length);
+
+    const datadirFile = "datadir.txt";
+    if (existsSync(datadirFile)) {
+        const configured = readFileSync(datadirFile, "utf-8").trim();
+        if (configured) return configured;
+    }
+    return "data";
+}
+
+export const DATA_DIR = resolveDataDir();
 mkdirSync(DATA_DIR, { recursive: true });
 
 // The active DB is determined at request time via the semester/lang combo.

@@ -12,12 +12,11 @@
 //    an genau diesen lokalen Server.
 // 5. Beim Schliessen des Fensters den Server-Kindprozess sauber beenden.
 
-const PORT = 3000; // DIAGNOSE 2: kein envs in diesem Test, Server nutzt Default-Port
+const PORT = 3000; // Server-Default (adapter-node) - kann nicht per env überschrieben werden, siehe unten
 const APP_NAME = "vorlesungsplaner";
 const STARTUP_TIMEOUT_MS = 20000;
 
-let serverProcess = null;
-let serverExited = false;
+let serverPid = null;
 let processOutput = "";
 
 function setStatus(text) {
@@ -60,12 +59,15 @@ function toNativePath(path) {
 async function waitForServer(url, timeoutMs) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-        if (serverExited) return false; // Prozess ist schon tot - nicht weiter warten
-
         try {
-            const res = await fetch(url, { cache: "no-store" });
-            // Jede Antwort (auch 404/500) heisst: der Prozess lebt und horcht.
-            if (res.status < 600) return true;
+            // no-cors: uns interessiert nur "antwortet der Server überhaupt",
+            // nicht der Inhalt der Antwort. Ohne no-cors blockt der Browser
+            // die Cross-Origin-Anfrage (Loader läuft auf Neutralinos eigenem
+            // Port, der Server auf einem anderen), da unser SvelteKit-Server
+            // keine CORS-Header setzt (für die spätere App im <iframe>
+            // braucht es das auch nicht - das läuft dann same-origin).
+            await fetch(url, { cache: "no-store", mode: "no-cors" });
+            return true; // kein Reject = Server hat geantwortet (Response bleibt opak)
         } catch (err) {
             // Verbindung noch nicht moeglich - weiter warten.
         }
@@ -87,42 +89,32 @@ async function startServer() {
     const platformDir = toNativePath(platformDirRaw);
     const binPath = toNativePath(binPathRaw);
 
+    appendOutput(`Datenverzeichnis: ${appDataDir}`);
     appendOutput(`Starte: ${binPath}`);
     appendOutput(`Arbeitsverzeichnis: ${platformDir}`);
+    appendOutput(`Zum manuellen Nachstellen: "${binPath}" --data-dir="${appDataDir}"`);
 
-    // Sicherheitshalber die bestehende Prozessumgebung explizit übernehmen
-    // und nur um unsere eigenen Variablen ergänzen - falls `envs` bei
-    // spawnProcess die Elternumgebung ersetzt statt ergänzt, würden sonst
-    // z.B. unter Windows Variablen wie SystemRoot fehlen, was zu stillen
-    // Abstürzen bei der Netzwerk-/Socket-Initialisierung führen kann.
-    const parentEnvs = await Neutralino.os.getEnvs().catch((err) => {
-        appendOutput("getEnvs() fehlgeschlagen: " + String(err && err.message ? err.message : err));
-        return {};
-    });
-    appendOutput(`Übernommene Umgebungsvariablen: ${Object.keys(parentEnvs).length}`);
+    // WICHTIG: os.spawnProcess UND os.execCommand mit cwd schienen
+    // wiederholt fehlzuschlagen - der eigentliche Grund war aber viel
+    // simpler: `neu build` kopiert eigene Ordner wie server/ standardmäßig
+    // GAR NICHT ins dist-Bundle (nur resources/ und die Neutralino-eigenen
+    // Binaries). NL_PATH zeigte daher zur Laufzeit auf einen Pfad, an dem
+    // server.exe schlicht nicht existierte - das erklärt rückblickend alle
+    // bisherigen Fehlerbilder. Fix: "copyItems": ["server"] in
+    // neutralino.config.json. Jetzt, wo die Datei tatsächlich existiert,
+    // funktioniert cwd wieder ganz normal.
+    const result = await Neutralino.os.execCommand(
+        `${binPath} --data-dir=${appDataDir}`,
+        { cwd: platformDir, background: true }
+    );
 
-    // WICHTIG: Listener MUSS vor spawnProcess registriert werden, sonst
-    // verpassen wir stdOut/stdErr/exit-Events eines Prozesses, der sofort
-    // nach dem Start abstuerzt (Race Condition).
-    Neutralino.events.on("spawnedProcess", (evt) => {
-        if (!serverProcess || evt.detail.id !== serverProcess.id) return;
+    serverPid = result.pid;
+    appendOutput(`Prozess gestartet, PID: ${serverPid}`);
 
-        if (evt.detail.action === "stdOut") {
-            appendOutput("[stdout] " + evt.detail.data);
-        }
-        if (evt.detail.action === "stdErr") {
-            appendOutput("[stderr] " + evt.detail.data);
-        }
-        if (evt.detail.action === "exit") {
-            serverExited = true;
-            appendOutput(`[exit] Prozess beendet mit Code ${evt.detail.data}`);
-        }
-    });
-
-    appendOutput(`[DIAGNOSE 3] Starte ganz ohne Optionen (Backslash-Pfad, kein cwd, kein envs)...`);
-    serverProcess = await Neutralino.os.spawnProcess(binPath);
-
-    appendOutput(`Prozess gestartet, PID/ID: ${serverProcess.id}`);
+    // execCommand mit background:true liefert kein fortlaufendes
+    // stdOut/stdErr wie spawnProcess' Events - wir verifizieren daher
+    // ausschließlich über HTTP-Polling (waitForServer), ob der Server
+    // tatsächlich antwortet.
 }
 
 async function main() {
@@ -136,11 +128,7 @@ async function main() {
         const ready = await waitForServer(`http://127.0.0.1:${PORT}/`, STARTUP_TIMEOUT_MS);
 
         if (!ready) {
-            setStatus(
-                serverExited
-                    ? "Server ist vorzeitig beendet worden."
-                    : "Server konnte nicht gestartet werden (Timeout)."
-            );
+            setStatus("Server konnte nicht gestartet werden (Timeout).");
             return;
         }
 
@@ -165,11 +153,14 @@ async function main() {
 
 Neutralino.events.on("windowClose", async () => {
     try {
-        if (serverProcess) {
-            await Neutralino.os.updateSpawnedProcess(serverProcess.id, "exit");
+        if (serverPid) {
+            const killCmd = NL_OS === "Windows" ? `taskkill /F /PID ${serverPid}` : `kill ${serverPid}`;
+            await Neutralino.os.execCommand(killCmd).catch(() => {
+                // Prozess evtl. schon beendet - ignorieren
+            });
         }
     } catch (err) {
-        // Prozess evtl. schon beendet - ignorieren
+        // ignorieren - App soll in jedem Fall schliessen
     } finally {
         Neutralino.app.exit();
     }
