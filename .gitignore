@@ -40,3 +40,4 @@ imports/cache/
 /data
 neutralino/neutralino.d.ts
 neutralino/neutralino.js
+.bun-runtime-cache

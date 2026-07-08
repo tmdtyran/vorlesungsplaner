@@ -1,47 +1,94 @@
 #!/usr/bin/env bun
 /**
- * Baut den SvelteKit-Server (adapter-node) und kompiliert ihn per
- * `bun build --compile` fuer Windows/macOS/Linux zu eigenstaendigen
- * Executables (kein Node/Bun-Install beim Nutzer noetig).
+ * Baut den SvelteKit-Server (adapter-node) und stellt ihn fuer
+ * Windows/macOS/Linux bereit - inkl. eines echten, mitgelieferten
+ * Bun-Interpreters (kein Node/Bun-Install beim Nutzer noetig).
  *
- * WICHTIG: `bun build --compile` bettet nur das ein, was ueber
- * `import`-Statements erreichbar ist. adapter-node liest seine
- * statischen Client-Assets (build/client/ - JS/CSS/Bilder fuers Frontend)
- * aber zur Laufzeit ueber normale Dateisystem-Pfade relativ zum eigenen
- * Skriptstandort, nicht ueber `import`. Deshalb kopieren wir build/client/
- * zusaetzlich NEBEN die kompilierte Binary (nicht hinein) und starten den
- * Prozess mit passendem cwd (siehe neutralino/resources/app.js).
+ * WICHTIG - warum kein `bun build --compile` mehr:
+ * In einem via `bun build --compile` kompilierten Single-File-Executable
+ * liefern `import.meta.dir`/`__dirname` einen VIRTUELLEN Pfad
+ * (z.B. "B:\~BUN\root\" unter Windows, "/$bunfs/root/" unter Linux/Mac) -
+ * NICHT den echten Ordner, in dem die .exe tatsaechlich liegt. Das ist ein
+ * bekannter, bisher ungeloester Bun-Bug (oven-sh/bun#8476, #16010).
+ * SvelteKits adapter-node sucht seinen client/-Ordner aber genau relativ
+ * zu diesem dirname - das fuehrte bei uns zu durchgaengigen 404s fuer
+ * alle _app/immutable/*-Assets, unabhaengig von cwd/Quoting/etc.
  *
- * Ergebnis pro Plattform:
- *   neutralino/server/<platform>/server(.exe)
- *   neutralino/server/<platform>/client/...
+ * Deshalb liefern wir jetzt statt einer kompilierten Datei:
+ *   neutralino/server/<platform>/bun/bun(.exe)   - echter Bun-Interpreter
+ *   neutralino/server/<platform>/app/            - echtes build/-Verzeichnis
+ * und starten `bun/bun(.exe) app/index.js`. Da app/index.js eine ECHTE
+ * Datei auf der Platte ist, funktioniert dirname-Aufloesung ganz normal.
  *
  * Nutzung: bun run build:desktop-server
  */
 import { $ } from "bun";
-import { mkdir, cp } from "node:fs/promises";
+import { mkdir, cp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 const OUT_DIR = "neutralino/server";
+const CACHE_DIR = ".bun-runtime-cache";
 
 const targets = [
-    { bunTarget: "bun-windows-x64", dir: "win-x64", binary: "server.exe" },
-    { bunTarget: "bun-linux-x64", dir: "linux-x64", binary: "server" },
-    { bunTarget: "bun-darwin-x64", dir: "mac-x64", binary: "server" }
+    { bunTarget: "bun-windows-x64", dir: "win-x64", binaryName: "bun.exe" },
+    { bunTarget: "bun-linux-x64", dir: "linux-x64", binaryName: "bun" },
+    { bunTarget: "bun-darwin-x64", dir: "mac-x64", binaryName: "bun" }
 ];
+
+async function downloadBunRuntime(bunTarget: string, destDir: string, binaryName: string) {
+    const cachedZip = `${CACHE_DIR}/${bunTarget}.zip`;
+
+    if (!existsSync(cachedZip)) {
+        await mkdir(CACHE_DIR, { recursive: true });
+        const url = `https://github.com/oven-sh/bun/releases/latest/download/${bunTarget}.zip`;
+        console.log(`  ↓ lade ${url}`);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Download fehlgeschlagen: HTTP ${res.status} (${url})`);
+        await Bun.write(cachedZip, res);
+    } else {
+        console.log(`  ✓ ${bunTarget}.zip bereits im Cache (${CACHE_DIR}/)`);
+    }
+
+    const extractTmp = `${CACHE_DIR}/${bunTarget}-extracted`;
+    await rm(extractTmp, { recursive: true, force: true });
+    await mkdir(extractTmp, { recursive: true });
+
+    if (process.platform === "win32") {
+        await $`powershell -NoProfile -Command "Expand-Archive -Path '${cachedZip}' -DestinationPath '${extractTmp}' -Force"`;
+    } else {
+        await $`unzip -oq ${cachedZip} -d ${extractTmp}`;
+    }
+
+    // Das Zip enthaelt einen Ordner "bun-<target>/" mit der eigentlichen
+    // Executable darin - wir suchen sie statt den Pfad hart zu kodieren.
+    const glob = new Bun.Glob(`**/${binaryName}`);
+    let foundPath: string | null = null;
+    for await (const match of glob.scan({ cwd: extractTmp })) {
+        foundPath = `${extractTmp}/${match}`;
+        break;
+    }
+    if (!foundPath) throw new Error(`${binaryName} nicht im entpackten Archiv gefunden (${extractTmp})`);
+
+    await mkdir(destDir, { recursive: true });
+    await cp(foundPath, `${destDir}/${binaryName}`);
+    if (process.platform !== "win32") {
+        await $`chmod +x ${destDir}/${binaryName}`;
+    }
+}
 
 async function main() {
     console.log("→ vite build (SvelteKit, adapter-node)…");
     await $`bun x vite build`;
 
-    for (const { bunTarget, dir, binary } of targets) {
+    for (const { bunTarget, dir, binaryName } of targets) {
         const targetDir = `${OUT_DIR}/${dir}`;
-        await mkdir(targetDir, { recursive: true });
 
-        console.log(`→ bun build --compile --target=${bunTarget} → ${targetDir}/${binary}`);
-        await $`bun build ./build/index.js --compile --target=${bunTarget} --outfile ${targetDir}/${binary}`;
+        console.log(`→ Bun-Runtime für ${bunTarget}...`);
+        await downloadBunRuntime(bunTarget, `${targetDir}/bun`, binaryName);
 
-        console.log(`→ kopiere build/client/ nach ${targetDir}/client/`);
-        await cp("build/client", `${targetDir}/client`, { recursive: true });
+        console.log(`→ kopiere build/ nach ${targetDir}/app/`);
+        await rm(`${targetDir}/app`, { recursive: true, force: true });
+        await cp("build", `${targetDir}/app`, { recursive: true });
     }
 
     console.log("\n✓ Server-Bundles fertig unter neutralino/server/<platform>/");
@@ -60,4 +107,3 @@ main().catch((err) => {
     console.error(err);
     process.exit(1);
 });
-

@@ -2,8 +2,8 @@
 //
 // Ablauf:
 // 1. Neutralino.init()
-// 2. Freien Port waehlen und das gebuendelte Server-Binary (SvelteKit,
-//    kompiliert via `bun build --compile`) als Kindprozess starten,
+// 2. Freien Port waehlen und den mitgelieferten Bun-Interpreter mit der
+//    echten (unkompilierten) SvelteKit-App als Kindprozess starten,
 //    inkl. eines echten, plattformgerechten Datenverzeichnisses
 //    (Neutralino.os.getPath('data')).
 // 3. Warten, bis der Server auf dem Port antwortet (Polling).
@@ -40,9 +40,9 @@ function serverPlatformDir() {
     // fuehrt sie via Rosetta 2 transparent aus. Das spart uns eine
     // unzuverlaessige arm64/x64-Erkennung (Neutralinos computer.getArch()
     // meldet fuer beide Mac-Architekturen aktuell "x64", siehe Doku).
-    if (NL_OS === "Windows") return { dir: "win-x64", binary: "server.exe" };
-    if (NL_OS === "Darwin") return { dir: "mac-x64", binary: "server" };
-    return { dir: "linux-x64", binary: "server" };
+    if (NL_OS === "Windows") return { dir: "win-x64", bunBinary: "bun.exe" };
+    if (NL_OS === "Darwin") return { dir: "mac-x64", bunBinary: "bun" };
+    return { dir: "linux-x64", bunBinary: "bun" };
 }
 
 function toNativePath(path) {
@@ -83,28 +83,28 @@ async function startServer() {
         // existiert bereits - kein Problem
     });
 
-    const { dir, binary } = serverPlatformDir();
+    const { dir, bunBinary } = serverPlatformDir();
     const platformDirRaw = await Neutralino.filesystem.getJoinedPath(NL_PATH, "server", dir);
-    const binPathRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, binary);
+    const bunPathRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, "bun", bunBinary);
+    const appJsRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, "app", "index.js");
     const platformDir = toNativePath(platformDirRaw);
-    const binPath = toNativePath(binPathRaw);
+    const bunPath = toNativePath(bunPathRaw);
+    const appJs = toNativePath(appJsRaw);
 
     appendOutput(`Datenverzeichnis: ${appDataDir}`);
-    appendOutput(`Starte: ${binPath}`);
+    appendOutput(`Starte: ${bunPath} ${appJs}`);
     appendOutput(`Arbeitsverzeichnis: ${platformDir}`);
-    appendOutput(`Zum manuellen Nachstellen: "${binPath}" --data-dir="${appDataDir}"`);
+    appendOutput(`Zum manuellen Nachstellen: "${bunPath}" "${appJs}" --data-dir="${appDataDir}"`);
 
-    // WICHTIG: os.spawnProcess UND os.execCommand mit cwd schienen
-    // wiederholt fehlzuschlagen - der eigentliche Grund war aber viel
-    // simpler: `neu build` kopiert eigene Ordner wie server/ standardmäßig
-    // GAR NICHT ins dist-Bundle (nur resources/ und die Neutralino-eigenen
-    // Binaries). NL_PATH zeigte daher zur Laufzeit auf einen Pfad, an dem
-    // server.exe schlicht nicht existierte - das erklärt rückblickend alle
-    // bisherigen Fehlerbilder. Fix: "copyItems": ["server"] in
-    // neutralino.config.json. Jetzt, wo die Datei tatsächlich existiert,
-    // funktioniert cwd wieder ganz normal.
+    // WICHTIG: Wir nutzen jetzt einen ECHTEN, mitgelieferten Bun-Interpreter
+    // statt einer per `bun build --compile` kompilierten Binary. Grund:
+    // In einer kompilierten Binary liefern import.meta.dir/__dirname einen
+    // virtuellen Pfad (bekannter Bun-Bug oven-sh/bun#8476, #16010), wodurch
+    // adapter-node seinen client/-Ordner nie fand (alle Assets 404). Mit
+    // einer echten app/index.js-Datei, ausgeführt von einem echten
+    // bun(.exe), funktioniert die dirname-basierte Pfadauflösung normal.
     const result = await Neutralino.os.execCommand(
-        `${binPath} --data-dir=${appDataDir}`,
+        `${bunPath} ${appJs} --data-dir=${appDataDir}`,
         { cwd: platformDir, background: true }
     );
 
