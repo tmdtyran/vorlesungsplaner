@@ -1,6 +1,49 @@
 import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import Database from "better-sqlite3";
+import type { Database as BunDatabase } from "bun:sqlite";
+
+// WICHTIG: Umstieg von better-sqlite3 auf bun:sqlite (in Bun eingebaut,
+// keine native .node-Kompilierung noetig). Gruende:
+// 1. better-sqlite3 ist plattformspezifisch kompiliert - node_modules vom
+//    Windows-Build-Rechner funktionierten nicht fuer macOS/Linux.
+// 2. Fuer eine echte Single-File-Executable via `bun build --compile`
+//    duerfen keine externen nativen Module noetig sein, sonst muss
+//    node_modules zusaetzlich mitgeliefert werden (grosses Bundle).
+// bun:sqlite bildet die better-sqlite3-API bewusst fast 1:1 nach
+// (.exec/.prepare/.get/.all/.run), daher blieb der Rest dieser Datei
+// weitgehend unveraendert.
+//
+// WICHTIG: "bun:sqlite" wird bewusst NICHT statisch importiert (der obige
+// `import type` ist ein reiner Typ-Import, der zur Laufzeit komplett
+// entfernt wird - unproblematisch). Ein echter `import { Database } from
+// "bun:sqlite"` an dieser Stelle bricht SvelteKits Build-Zeit-"Analyse"-
+// Schritt: der importiert alle Routen testweise in einem isolierten ECHTEN
+// Node.js-Worker, um prerender-Faehigkeit zu pruefen - und zwar auch dann,
+// wenn der Build selbst per `bun run build` gestartet wurde. Node kennt
+// das "bun:"-Protokoll nicht und bricht mit ERR_UNSUPPORTED_ESM_URL_SCHEME
+// ab. Deshalb laden wir bun:sqlite unten per dynamischem, mit
+// `typeof Bun !== "undefined"` abgesichertem Import - der wird unter Node
+// nie ausgefuehrt, /* @vite-ignore */ verhindert zusaetzlich, dass Vites
+// Bundler den Import schon beim Bauen selbst aufzuloesen versucht.
+const isBun = typeof Bun !== "undefined";
+
+let DatabaseCtor: new (path: string) => BunDatabase;
+if (isBun) {
+    const mod = await import(/* @vite-ignore */ "bun:sqlite");
+    DatabaseCtor = mod.Database;
+} else {
+    // Nur fuer SvelteKits Analyse-Schritt (siehe oben) - liefert ein
+    // harmloses No-Op-Stub, damit das Modul dort ueberhaupt geladen werden
+    // kann, ohne dass echte SQL-Aufrufe passieren. Zur echten Laufzeit
+    // (immer unter Bun) wird dieser Zweig nie genommen.
+    DatabaseCtor = class {
+        exec() {}
+        prepare() {
+            return { get: () => undefined, all: () => [], run: () => ({ changes: 0 }) };
+        }
+        close() {}
+    } as unknown as new (path: string) => BunDatabase;
+}
 
 // Im Web-Betrieb (unveraendert) liegt "data/" relativ zum cwd des Servers.
 // Fuer die Desktop-Verpackung (Neutralino) braucht der Server einen echten,
@@ -42,13 +85,13 @@ mkdirSync(DATA_DIR, { recursive: true });
 
 // The active DB is determined at request time via the semester/lang combo.
 // We keep a cache of open Database instances to avoid reopening constantly.
-const dbCache = new Map<string, Database.Database>();
+const dbCache = new Map<string, BunDatabase>();
 
-export function getDb(periodeId: string, lang: string): Database.Database {
+export function getDb(periodeId: string, lang: string): BunDatabase {
     const key = `${periodeId}_${lang}`;
     if (dbCache.has(key)) return dbCache.get(key)!;
 
-    const db = new Database(join(DATA_DIR, `${key}.db`));
+    const db = new DatabaseCtor(join(DATA_DIR, `${key}.db`));
     db.exec(`PRAGMA journal_mode = WAL;`);
     initSchema(db);
     dbCache.set(key, db);
@@ -56,10 +99,10 @@ export function getDb(periodeId: string, lang: string): Database.Database {
 }
 
 // Convenience: a "default" DB for when no semester is selected yet
-let _defaultDb: Database.Database | null = null;
-export function getDefaultDb(): Database.Database {
+let _defaultDb: BunDatabase | null = null;
+export function getDefaultDb(): BunDatabase {
     if (_defaultDb) return _defaultDb;
-    _defaultDb = new Database(join(DATA_DIR, "default.db"));
+    _defaultDb = new DatabaseCtor(join(DATA_DIR, "default.db"));
     _defaultDb.exec(`PRAGMA journal_mode = WAL;`);
     initSchema(_defaultDb);
     return _defaultDb;
@@ -68,14 +111,14 @@ export function getDefaultDb(): Database.Database {
 // Legacy export so existing imports still compile
 export const db = getDefaultDb();
 
-export function getImportMeta(db: Database.Database): Record<string, string> {
+export function getImportMeta(db: BunDatabase): Record<string, string> {
     const rows = db.prepare(`SELECT key, value FROM import_meta`).all() as { key: string; value: string }[];
     const out: Record<string, string> = {};
     for (const r of rows) out[r.key] = r.value;
     return out;
 }
 
-export function setImportMeta(db: Database.Database, entries: Record<string, string>) {
+export function setImportMeta(db: BunDatabase, entries: Record<string, string>) {
     const stmt = db.prepare(`
         INSERT INTO import_meta (key, value) VALUES (?, ?)
         ON CONFLICT(key) DO UPDATE SET value = excluded.value
@@ -85,14 +128,14 @@ export function setImportMeta(db: Database.Database, entries: Record<string, str
     }
 }
 
-export function clearImportMeta(db: Database.Database, keys: string[]) {
+export function clearImportMeta(db: BunDatabase, keys: string[]) {
     const stmt = db.prepare(`DELETE FROM import_meta WHERE key = ?`);
     for (const key of keys) {
         stmt.run(key);
     }
 }
 
-function initSchema(db: Database.Database) {
+function initSchema(db: BunDatabase) {
     db.exec(`
     CREATE TABLE IF NOT EXISTS lecture_catalog (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

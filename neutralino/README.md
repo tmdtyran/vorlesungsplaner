@@ -11,10 +11,11 @@ Verpackungsschicht hinzu.
 Neutralino-Fenster (resources/index.html)
         │
         ├─ startet als Kindprozess:
-        │  neutralino/server/<os>-x64/bun/bun(.exe)
-        │      neutralino/server/<os>-x64/app/index.js --data-dir=...
-        │  (= echter Bun-Interpreter + echtes, unverändertes
-        │     adapter-node-Build-Verzeichnis)
+        │  neutralino/server/<os>-x64/vorlesungsplaner(.exe)
+        │      --data-dir=<Nutzerdatenordner>
+        │      --assets-dir=<...>/assets
+        │  (= EINE kompilierte Datei, ~60-90 MB, kein separates
+        │     node_modules, kein separater Bun-Interpreter)
         │
         └─ zeigt per <iframe> http://127.0.0.1:3000/ an,
            sobald der Server bereit ist
@@ -24,18 +25,41 @@ Warum ein iframe statt direkter Navigation? Damit die Verbindung zur
 Neutralino-Laufzeit (für sauberes Beenden des Server-Prozesses beim
 Schließen des Fensters) erhalten bleibt.
 
-**Warum ein echter Bun-Interpreter statt einer kompilierten Binary?**
-Ursprünglich wurde der Server per `bun build --compile` zu einer
-eigenständigen Datei kompiliert. Das scheiterte aber strukturell: In einer
-so kompilierten Binary liefern `import.meta.dir`/`__dirname` einen
-**virtuellen** Pfad (z. B. `B:\~BUN\root\` unter Windows), nicht den
-echten Ordner, in dem die Datei liegt — ein bekannter, bisher ungelöster
-Bun-Bug ([#8476](https://github.com/oven-sh/bun/issues/8476),
-[#16010](https://github.com/oven-sh/bun/issues/16010)). `adapter-node`
-sucht seinen `client/`-Ordner aber genau relativ zu diesem Pfad, wodurch
-alle `_app/immutable/*`-Assets mit 404 fehlschlugen. Mit einer echten
-`app/index.js`-Datei, ausgeführt von einem echten `bun(.exe)`, funktioniert
-die normale Pfadauflösung wieder wie erwartet.
+## Wie aus adapter-node eine echte Single-File-Executable wurde
+
+Das war der schwierigste Teil und hat mehrere Anläufe gebraucht - kurz
+dokumentiert, falls hier mal wieder etwas kaputtgeht:
+
+1. **`bun build --compile` bettet alles ein, was über `import` erreichbar
+   ist.** adapter-nodes Server-Code (`build/index.js` +
+   `build/server/chunks/*.js`) besteht komplett aus solchen Imports und
+   lässt sich daher problemlos in eine Datei kompilieren.
+2. **Der einzige Teil, der einen echten Dateisystem-Pfad braucht, ist die
+   Auslieferung der statischen Client-Assets** (`build/client/`).
+   adapter-node berechnet deren Basisverzeichnis in `build/env.js` via
+   `path.dirname(fileURLToPath(import.meta.url))`. In einer kompilierten
+   Bun-Executable liefert das einen **virtuellen** Pfad statt des echten
+   Speicherorts — ein bekannter, ungelöster Bun-Bug
+   ([oven-sh/bun#8476](https://github.com/oven-sh/bun/issues/8476),
+   [#16010](https://github.com/oven-sh/bun/issues/16010)).
+3. **Fix:** `scripts/build-desktop-server.ts` patcht diese eine Zeile in
+   `build/env.js` nach jedem `vite build`, sodass sie zusätzlich ein
+   `--assets-dir=`-CLI-Flag respektiert. Der Rest von adapter-node bleibt
+   zu 100 % unverändert. Der Patch wurde gegen den echten generierten Code
+   verifiziert (nicht nur angenommen).
+4. **`better-sqlite3` → `bun:sqlite`:** `better-sqlite3` ist plattform-
+   spezifisch kompiliert (native `.node`-Datei) und hätte node_modules
+   zusätzlich zur kompilierten Executable nötig gemacht. `bun:sqlite` ist
+   in Bun eingebaut, braucht keine native Kompilierung und funktioniert
+   automatisch auf allen 3 Plattformen. Die API ist bewusst fast 1:1 zu
+   better-sqlite3, daher blieb `src/lib/server/db.ts` bis auf den Import
+   unverändert. **Das Projekt läuft dadurch nur noch unter Bun**, nicht
+   mehr unter reinem Node — passt zum bestehenden Tooling (`bun run ...`
+   überall).
+
+Ergebnis: `neutralino/server/<platform>/vorlesungsplaner(.exe)` (eine
+Datei) + `neutralino/server/<platform>/assets/client/` (nur die paar KB
+an JS/CSS, lose Dateien, da genau dafür `--assets-dir` existiert).
 
 ## Einmalige Einrichtung
 
@@ -75,50 +99,31 @@ bun run build:desktop
 
 Das macht:
 1. `vite build` (SvelteKit → `build/`, via `adapter-node`)
-2. Für jede Zielplattform (Windows/macOS/Linux):
-   - lädt den offiziellen Bun-Release (`bun-<platform>.zip` von GitHub,
-     gecacht unter `.bun-runtime-cache/` nach dem ersten Mal) herunter
-     und entpackt den Interpreter nach `neutralino/server/<os>-x64/bun/`
-   - kopiert das komplette `build/`-Verzeichnis unverändert nach
-     `neutralino/server/<os>-x64/app/`
-   - kopiert `node_modules` nach `neutralino/server/<os>-x64/app/node_modules/`
-     (adapter-node bundelt keine Dependencies - ohne das crasht jeder
-     API-Call, der z. B. `better-sqlite3` oder `cheerio` braucht, mit 500)
-3. `neu build` → fertige Bundles in `neutralino/dist/vorlesungsplaner/`
+2. Patcht `build/env.js` für das `--assets-dir`-Flag (siehe oben)
+3. Für jede Zielplattform (Windows/macOS/Linux):
+   `bun build --compile` → eine einzelne Executable
+   + Kopie von `build/client/` nach `assets/client/`
+4. `neu build` → fertige Bundles in `neutralino/dist/vorlesungsplaner/`
 
 Alle drei Plattform-Ordner werden **komplett** in jedes
 Distributions-Bundle mitgepackt (das steuert `"copyItems": ["server"]`
 in `neutralino.config.json` — ohne das kopiert `neu build` eigene Ordner
 wie `server/` standardmäßig **nicht** mit!). `app.js` wählt zur Laufzeit
-anhand von `NL_OS` den richtigen Unterordner aus. Das kostet etwas
-Bundle-Größe (drei Bun-Runtimes statt einer), vereinfacht den Build aber
-deutlich.
+anhand von `NL_OS` den richtigen Unterordner aus.
 
 ## Bekannte offene Punkte / Risiken
 
-- **`better-sqlite3` ist plattformspezifisch kompiliert (native `.node`-Datei).**
-  `node_modules` wird aktuell 1:1 vom Build-Rechner in **alle drei**
-  Plattform-Ordner kopiert. Das funktioniert nur für die Plattform, auf
-  der tatsächlich gebaut wird (hier: Windows) — für macOS/Linux wäre die
-  mitkopierte `better-sqlite3`-Binary die falsche und der Server würde
-  dort beim ersten DB-Zugriff crashen. Sauberer Fix: Umstieg auf
-  `bun:sqlite` (in Bun eingebaut, keine native Kompilierung, für jede
-  Plattform automatisch verfügbar) in `src/lib/server/db.ts` — die Datei
-  ist bewusst der einzige Ort im Projekt, der `better-sqlite3` importiert,
-  ein Wechsel bliebe lokal begrenzt. Bis dahin: nur die Windows-Variante
-  ist verlässlich lauffähig.
-- **Bundle-Größe:** `node_modules` wird pro Plattform dupliziert (3×),
-  zusätzlich zu den 3 Bun-Runtimes. Für einen ersten funktionierenden
-  Stand bewusst in Kauf genommen; ließe sich später optimieren (z. B. nur
-  Production-Dependencies statt des kompletten `node_modules`
-  mitkopieren).
 - **Fester Port 3000** (adapter-node-Default) in `app.js` – bei Konflikt
   mit einem anderen lokalen Prozess müsste das konfigurierbar werden.
-  `spawnProcess`/`execCommand` unterstützen laut aktueller Doku leider
-  keine Umgebungsvariablen für den Kindprozess, daher aktuell nicht per
+  `execCommand` unterstützt laut aktueller Doku leider keine
+  Umgebungsvariablen für den Kindprozess, daher aktuell nicht per
   `PORT`-Env lösbar; ggf. über einen zusätzlichen CLI-Parameter (analog
-  zu `--data-dir`) nachrüstbar.
+  zu `--data-dir`/`--assets-dir`) nachrüstbar.
 - **Kein Icon hinterlegt.** `neutralino/resources/icon.png` ergänzen und
   in `neutralino.config.json` unter `modes.window.icon` eintragen.
-- **`.bun-runtime-cache/` gehört nicht ins Git** (siehe `.gitignore`) –
-  bei Bedarf lokal löschen, um eine neuere Bun-Version zu erzwingen.
+- **`db.ts`-Patch-Ziel könnte bei einem zukünftigen `adapter-node`-Update
+  brechen.** Das Build-Skript wirft in dem Fall einen klaren Fehler
+  ("Erwartete Zeile in build/env.js nicht gefunden") statt still zu
+  scheitern — dann muss der Patch-String in
+  `scripts/build-desktop-server.ts` an die neue generierte Form angepasst
+  werden.

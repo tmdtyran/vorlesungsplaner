@@ -2,10 +2,10 @@
 //
 // Ablauf:
 // 1. Neutralino.init()
-// 2. Freien Port waehlen und den mitgelieferten Bun-Interpreter mit der
-//    echten (unkompilierten) SvelteKit-App als Kindprozess starten,
-//    inkl. eines echten, plattformgerechten Datenverzeichnisses
-//    (Neutralino.os.getPath('data')).
+// 2. Freien Port waehlen und die kompilierte Server-Executable (SvelteKit,
+//    per `bun build --compile` zu einer einzigen Datei kompiliert) als
+//    Kindprozess starten, inkl. eines echten, plattformgerechten
+//    Datenverzeichnisses (Neutralino.os.getPath('data')).
 // 3. Warten, bis der Server auf dem Port antwortet (Polling).
 // 4. Die App per <iframe> anzeigen. Ab hier laeuft die bestehende App
 //    unveraendert - alle fetch("/api/...")-Aufrufe der Komponenten gehen
@@ -40,9 +40,9 @@ function serverPlatformDir() {
     // fuehrt sie via Rosetta 2 transparent aus. Das spart uns eine
     // unzuverlaessige arm64/x64-Erkennung (Neutralinos computer.getArch()
     // meldet fuer beide Mac-Architekturen aktuell "x64", siehe Doku).
-    if (NL_OS === "Windows") return { dir: "win-x64", bunBinary: "bun.exe" };
-    if (NL_OS === "Darwin") return { dir: "mac-x64", bunBinary: "bun" };
-    return { dir: "linux-x64", bunBinary: "bun" };
+    if (NL_OS === "Windows") return { dir: "win-x64", binary: "vorlesungsplaner.exe" };
+    if (NL_OS === "Darwin") return { dir: "mac-x64", binary: "vorlesungsplaner" };
+    return { dir: "linux-x64", binary: "vorlesungsplaner" };
 }
 
 function toNativePath(path) {
@@ -83,29 +83,34 @@ async function startServer() {
         // existiert bereits - kein Problem
     });
 
-    const { dir, bunBinary } = serverPlatformDir();
+    const { dir, binary } = serverPlatformDir();
     const platformDirRaw = await Neutralino.filesystem.getJoinedPath(NL_PATH, "server", dir);
-    const bunPathRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, "bun", bunBinary);
-    const appJsRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, "app", "index.js");
+    const binPathRaw = await Neutralino.filesystem.getJoinedPath(platformDirRaw, binary);
     const platformDir = toNativePath(platformDirRaw);
-    const bunPath = toNativePath(bunPathRaw);
-    const appJs = toNativePath(appJsRaw);
+    const binPath = toNativePath(binPathRaw);
+    const assetsDir = toNativePath(
+        await Neutralino.filesystem.getJoinedPath(platformDirRaw, "assets")
+    );
 
     appendOutput(`Datenverzeichnis: ${appDataDir}`);
-    appendOutput(`Starte: ${bunPath} ${appJs}`);
+    appendOutput(`Starte: ${binPath}`);
     appendOutput(`Arbeitsverzeichnis: ${platformDir}`);
-    appendOutput(`Zum manuellen Nachstellen: "${bunPath}" "${appJs}" --data-dir="${appDataDir}"`);
+    appendOutput(
+        `Zum manuellen Nachstellen: "${binPath}" --data-dir="${appDataDir}" --assets-dir="${assetsDir}"`
+    );
 
-    // WICHTIG: Wir nutzen jetzt einen ECHTEN, mitgelieferten Bun-Interpreter
-    // statt einer per `bun build --compile` kompilierten Binary. Grund:
-    // In einer kompilierten Binary liefern import.meta.dir/__dirname einen
-    // virtuellen Pfad (bekannter Bun-Bug oven-sh/bun#8476, #16010), wodurch
-    // adapter-node seinen client/-Ordner nie fand (alle Assets 404). Mit
-    // einer echten app/index.js-Datei, ausgeführt von einem echten
-    // bun(.exe), funktioniert die dirname-basierte Pfadauflösung normal.
+    // WICHTIG: Diesmal eine ECHTE Single-File-Executable via
+    // `bun build --compile` - der frühere Absturz aller /_app/immutable/*-
+    // Assets lag NICHT an --compile selbst, sondern daran, dass
+    // adapter-node seinen client/-Ordner über import.meta.dir/__dirname
+    // sucht, was in einer kompilierten Binary einen virtuellen Fake-Pfad
+    // liefert (bekannter Bun-Bug). Das Build-Skript patcht build/env.js so,
+    // dass --assets-dir hier den echten Pfad vorgibt (siehe
+    // scripts/build-desktop-server.ts). better-sqlite3 (natives Modul,
+    // Cross-Platform-Problem) wurde zusätzlich durch bun:sqlite ersetzt.
     const result = await Neutralino.os.execCommand(
-        `${bunPath} ${appJs} --data-dir=${appDataDir}`,
-        { cwd: platformDir, background: true }
+        `${binPath} --data-dir=${appDataDir} --assets-dir=${assetsDir}`,
+        { background: true }
     );
 
     serverPid = result.pid;
