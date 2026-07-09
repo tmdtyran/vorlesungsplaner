@@ -81,6 +81,9 @@ Das macht:
      und entpackt den Interpreter nach `neutralino/server/<os>-x64/bun/`
    - kopiert das komplette `build/`-Verzeichnis unverändert nach
      `neutralino/server/<os>-x64/app/`
+   - kopiert `node_modules` nach `neutralino/server/<os>-x64/app/node_modules/`
+     (adapter-node bundelt keine Dependencies - ohne das crasht jeder
+     API-Call, der z. B. `better-sqlite3` oder `cheerio` braucht, mit 500)
 3. `neu build` → fertige Bundles in `neutralino/dist/vorlesungsplaner/`
 
 Alle drei Plattform-Ordner werden **komplett** in jedes
@@ -93,14 +96,22 @@ deutlich.
 
 ## Bekannte offene Punkte / Risiken
 
-- **`better-sqlite3` unter dem mitgelieferten Bun-Interpreter noch nicht
-  verifiziert.** Sollte inzwischen unkritischer sein als bei der
-  kompilierten Variante (echter Bun-Interpreter statt Single-File-Binary),
-  aber falls der Server beim Start mit einem Fehler rund um
-  `better_sqlite3.node` abstürzt: Umstieg auf `bun:sqlite` (Bun-eingebaut,
-  keine native Abhängigkeit) in `src/lib/server/db.ts`. Die Datei ist
-  bewusst der einzige Ort im Projekt, der `better-sqlite3` importiert –
-  ein Wechsel bliebe lokal begrenzt.
+- **`better-sqlite3` ist plattformspezifisch kompiliert (native `.node`-Datei).**
+  `node_modules` wird aktuell 1:1 vom Build-Rechner in **alle drei**
+  Plattform-Ordner kopiert. Das funktioniert nur für die Plattform, auf
+  der tatsächlich gebaut wird (hier: Windows) — für macOS/Linux wäre die
+  mitkopierte `better-sqlite3`-Binary die falsche und der Server würde
+  dort beim ersten DB-Zugriff crashen. Sauberer Fix: Umstieg auf
+  `bun:sqlite` (in Bun eingebaut, keine native Kompilierung, für jede
+  Plattform automatisch verfügbar) in `src/lib/server/db.ts` — die Datei
+  ist bewusst der einzige Ort im Projekt, der `better-sqlite3` importiert,
+  ein Wechsel bliebe lokal begrenzt. Bis dahin: nur die Windows-Variante
+  ist verlässlich lauffähig.
+- **Bundle-Größe:** `node_modules` wird pro Plattform dupliziert (3×),
+  zusätzlich zu den 3 Bun-Runtimes. Für einen ersten funktionierenden
+  Stand bewusst in Kauf genommen; ließe sich später optimieren (z. B. nur
+  Production-Dependencies statt des kompletten `node_modules`
+  mitkopieren).
 - **Fester Port 3000** (adapter-node-Default) in `app.js` – bei Konflikt
   mit einem anderen lokalen Prozess müsste das konfigurierbar werden.
   `spawnProcess`/`execCommand` unterstützen laut aktueller Doku leider

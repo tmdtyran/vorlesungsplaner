@@ -89,6 +89,21 @@ async function main() {
         console.log(`→ kopiere build/ nach ${targetDir}/app/`);
         await rm(`${targetDir}/app`, { recursive: true, force: true });
         await cp("build", `${targetDir}/app`, { recursive: true });
+
+        // WICHTIG: adapter-node bundelt keine node_modules - es geht davon
+        // aus, dass "node build/index.js" mit den echten node_modules aus
+        // dem Projekt-Root daneben läuft. Ohne das crasht jeder API-Call,
+        // der z.B. better-sqlite3 (db.ts) oder cheerio (Import-Scraper)
+        // braucht, serverseitig mit 500. Deshalb kopieren wir node_modules
+        // mit in den app/-Ordner.
+        // ACHTUNG: better-sqlite3 enthält eine PLATTFORMSPEZIFISCH
+        // kompilierte .node-Datei. Von diesem (Windows-)Rechner aus
+        // gebaute node_modules funktionieren nur für win-x64 korrekt -
+        // für linux-x64/mac-x64 bräuchte man node_modules, die tatsächlich
+        // auf der jeweiligen Zielplattform installiert wurden (oder einen
+        // Wechsel auf bun:sqlite, das ohne native Kompilierung auskommt).
+        console.log(`→ kopiere node_modules nach ${targetDir}/app/node_modules/ (kann dauern)…`);
+        await cp("node_modules", `${targetDir}/app/node_modules`, { recursive: true });
     }
 
     console.log("\n✓ Server-Bundles fertig unter neutralino/server/<platform>/");
