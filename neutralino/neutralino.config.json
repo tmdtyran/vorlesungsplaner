@@ -25,7 +25,7 @@
       "height": 800,
       "minWidth": 800,
       "minHeight": 600,
-      "enableInspector": true,
+      "enableInspector": false,
       "exitProcessOnClose": false
     }
   },
@@ -36,6 +36,6 @@
     "clientLibrary": "/resources/neutralino.js",
     "binaryVersion": "6.8.0",
     "clientVersion": "6.8.0",
-    "copyItems": ["server"]
+    "copyItems": ["server", "Debug.bat", "Debug.sh"]
   }
 }
