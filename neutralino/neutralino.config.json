@@ -11,6 +11,8 @@
   "nativeAllowList": [
     "app.*",
     "os.execCommand",
+    "os.spawnProcess",
+    "os.updateSpawnedProcess",
     "os.getPath",
     "filesystem.*",
     "events.*",

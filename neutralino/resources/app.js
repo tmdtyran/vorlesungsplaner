@@ -16,7 +16,7 @@ const PORT = 3000; // Server-Default (adapter-node) - kann nicht per env übersc
 const APP_NAME = "vorlesungsplaner";
 const STARTUP_TIMEOUT_MS = 20000;
 
-let serverPid = null;
+let serverProcess = null;
 let processOutput = "";
 
 function setStatus(text) {
@@ -108,18 +108,27 @@ async function startServer() {
     // dass --assets-dir hier den echten Pfad vorgibt (siehe
     // scripts/build-desktop-server.ts). better-sqlite3 (natives Modul,
     // Cross-Platform-Problem) wurde zusätzlich durch bun:sqlite ersetzt.
-    const result = await Neutralino.os.execCommand(
+    //
+    // spawnProcess statt execCommand: execCommand läuft intern über
+    // cmd.exe + conhost.exe als Zwischenprozesse (im Task-Manager sichtbar
+    // als "Windows-Befehlsprozessor"/"Host für Konsolenfenster") - killen
+    // per taskkill/PID traf dadurch nie den echten Server-Prozess.
+    // spawnProcess liefert eine von Neutralino selbst getrackte Prozess-ID,
+    // die sich über updateSpawnedProcess(id, "exit") zuverlässig beenden
+    // lässt (siehe windowClose unten).
+    serverProcess = await Neutralino.os.spawnProcess(
         `${binPath} --data-dir=${appDataDir} --assets-dir=${assetsDir}`,
-        { background: true }
+        platformDir
     );
 
-    serverPid = result.pid;
-    appendOutput(`Prozess gestartet, PID: ${serverPid}`);
+    appendOutput(`Prozess gestartet, ID: ${serverProcess.id}`);
 
-    // execCommand mit background:true liefert kein fortlaufendes
-    // stdOut/stdErr wie spawnProcess' Events - wir verifizieren daher
-    // ausschließlich über HTTP-Polling (waitForServer), ob der Server
-    // tatsächlich antwortet.
+    Neutralino.events.on("spawnedProcess", (evt) => {
+        if (!serverProcess || evt.detail.id !== serverProcess.id) return;
+        if (evt.detail.action === "stdOut") appendOutput("[stdout] " + evt.detail.data);
+        if (evt.detail.action === "stdErr") appendOutput("[stderr] " + evt.detail.data);
+        if (evt.detail.action === "exit") appendOutput(`[exit] Prozess beendet mit Code ${evt.detail.data}`);
+    });
 }
 
 async function main() {
@@ -158,9 +167,8 @@ async function main() {
 
 Neutralino.events.on("windowClose", async () => {
     try {
-        if (serverPid) {
-            const killCmd = NL_OS === "Windows" ? `taskkill /F /PID ${serverPid}` : `kill ${serverPid}`;
-            await Neutralino.os.execCommand(killCmd).catch(() => {
+        if (serverProcess) {
+            await Neutralino.os.updateSpawnedProcess(serverProcess.id, "exit").catch(() => {
                 // Prozess evtl. schon beendet - ignorieren
             });
         }
