@@ -2,6 +2,7 @@
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
+    import { goToDetails } from '$lib/stores/navigation.svelte';
 
     let allLectures = $state<CatalogEntry[]>([]);
     let viewMode = $state<'flat' | 'hierarchy'>('flat');
@@ -208,7 +209,7 @@
                 {:else if viewMode === 'hierarchy' ? hierarchyFlatList().length === 0 : filteredLeft.length === 0}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
                 {:else if viewMode === 'flat'}
-                    {#each filteredLeft as lecture}
+                    {#each filteredLeft as lecture (lecture.id)}
                         {@const selected = isSelected(lecture.unibas_id)}
                         <div
                             role="button"
@@ -253,7 +254,7 @@
                     {/each}
                 {:else}
                     <!-- Hierarchy view: real tree, flattened via depth-first traversal -->
-                    {#each hierarchyFlatList() as lecture}
+                    {#each hierarchyFlatList() as lecture (lecture.hierarchy_key ?? lecture.id)}
                         {@const indent = (lecture.depth ?? 0) * 16}
                         {@const isLeaf = lecture.unibas_id !== null}
                         {@const selected = isSelected(lecture.unibas_id)}
@@ -356,7 +357,7 @@
 
     <!-- Detail panel -->
     {#if selectedDetail}
-        <div class="border-t border-slate-200 bg-slate-50 p-5 overflow-y-auto max-h-64">
+        <div class="border-t border-slate-200 bg-slate-50 p-5 overflow-y-auto max-h-72">
             <div class="flex items-start justify-between gap-4">
                 <div>
                     <h3 class="text-base font-semibold text-slate-900">{selectedDetail.title}</h3>
@@ -401,21 +402,24 @@
                     </div>
                 </div>
             {/if}
-            {#if selectedDetail.events?.length > 0}
+            {#if selectedDetail.content}
                 <div class="mt-3">
-                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Einzeltermine</p>
-                    <div class="flex flex-wrap gap-2">
-                        {#each selectedDetail.events.slice(0, 8) as ev}
-                            <span class="rounded-md bg-white border border-slate-200 px-2 py-1 text-xs text-slate-700">
-                                {ev.date} · {ev.start_time}–{ev.end_time} · {ev.room}
-                            </span>
-                        {/each}
-                        {#if selectedDetail.events.length > 8}
-                            <span class="text-xs text-slate-400">+{selectedDetail.events.length - 8} weitere</span>
-                        {/if}
-                    </div>
+                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Beschreibung</p>
+                    <p class="text-sm text-slate-700 leading-relaxed line-clamp-4 whitespace-pre-line">{selectedDetail.content}</p>
+                </div>
+            {:else}
+                <div class="mt-3">
+                    <p class="text-xs text-slate-400">Keine Beschreibung verfügbar — führe "Import All Lectures" aus, um Details zu laden.</p>
                 </div>
             {/if}
+            <div class="mt-4 flex justify-end">
+                <button
+                    onclick={() => selectedDetail?.unibas_id && goToDetails(selectedDetail.unibas_id)}
+                    class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50"
+                >
+                    Weiteres <span aria-hidden="true">→</span>
+                </button>
+            </div>
         </div>
     {/if}
 </div>

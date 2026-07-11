@@ -1,17 +1,17 @@
 <script lang="ts">
     import ImportView from '$lib/components/ImportView.svelte';
     import LectureView from '$lib/components/LectureView.svelte';
+    import DetailsView from '$lib/components/DetailsView.svelte';
     import CalendarView from '$lib/components/CalendarView.svelte';
     import ModuleView from '$lib/components/ModuleView.svelte';
     import { selectedLectures, loadSelectionsForSemester } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
-
-    type Tab = 'import' | 'lectures' | 'calendar' | 'modules';
-    let activeTab = $state<Tab>('lectures');
+    import { nav, setActiveTab, type Tab } from '$lib/stores/navigation.svelte';
 
     const tabs: { id: Tab; label: string; icon: string }[] = [
         { id: 'import',    label: 'Import',      icon: '⬇' },
         { id: 'lectures',  label: 'Kursauswahl', icon: '📚' },
+        { id: 'details',   label: 'Details',     icon: '📄' },
         { id: 'calendar',  label: 'Kalender',    icon: '📅' },
         { id: 'modules',   label: 'Module & KP', icon: '🎓' },
     ];
@@ -66,9 +66,9 @@
         <nav class="flex h-full">
             {#each tabs as tab}
                 <button
-                    onclick={() => activeTab = tab.id}
+                    onclick={() => setActiveTab(tab.id)}
                     class="relative flex items-center gap-2 px-4 py-4 text-sm font-medium transition-colors
-                        {activeTab === tab.id
+                        {nav.activeTab === tab.id
                             ? 'text-indigo-600 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-indigo-600'
                             : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'}"
                 >
@@ -119,13 +119,15 @@
     <!-- Main content -->
     <main class="flex flex-1 min-h-0 overflow-hidden">
         <div class="flex-1 min-h-0 overflow-hidden bg-white">
-            {#if activeTab === 'import'}
+            {#if nav.activeTab === 'import'}
                 <ImportView />
-            {:else if activeTab === 'lectures'}
+            {:else if nav.activeTab === 'lectures'}
                 <LectureView />
-            {:else if activeTab === 'calendar'}
+            {:else if nav.activeTab === 'details'}
+                <DetailsView />
+            {:else if nav.activeTab === 'calendar'}
                 <CalendarView />
-            {:else if activeTab === 'modules'}
+            {:else if nav.activeTab === 'modules'}
                 <ModuleView />
             {/if}
         </div>

@@ -176,6 +176,7 @@ function initSchema(db: BunDatabase) {
         lecturers TEXT,
         assessment_format TEXT,
         assessment_details TEXT,
+        content TEXT,
         raw_html TEXT,
         imported_at TEXT
     );`);
@@ -203,7 +204,7 @@ function initSchema(db: BunDatabase) {
         if (!catalogCols.has(col)) db.exec(`ALTER TABLE lecture_catalog ADD COLUMN ${col} ${type}`);
     }
     const detailCols = new Set((db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[]).map(c => c.name));
-    for (const [col, type] of [['language','TEXT'],['semester','TEXT'],['offered_by','TEXT'],['faculty','TEXT'],['lecturers','TEXT'],['assessment_format','TEXT'],['assessment_details','TEXT']] as [string,string][]) {
+    for (const [col, type] of [['language','TEXT'],['semester','TEXT'],['offered_by','TEXT'],['faculty','TEXT'],['lecturers','TEXT'],['assessment_format','TEXT'],['assessment_details','TEXT'],['content','TEXT']] as [string,string][]) {
         if (!detailCols.has(col)) db.exec(`ALTER TABLE lecture_details ADD COLUMN ${col} ${type}`);
     }
 

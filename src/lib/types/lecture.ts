@@ -57,6 +57,7 @@ export interface LectureDetail {
     lecturers: string | null;
     assessment_format: string | null;
     assessment_details: string | null;
+    content: string | null;
     imported_at: string | null;
     events: DetailEvent[];
     recurringTimes: RecurringTime[];
@@ -68,4 +69,46 @@ export interface SelectedLecture {
     detail: LectureDetail | null;
     selectedModuleIndex: number;
     included: boolean;
+}
+
+export interface RecurringPatternRow {
+    frequency: string;
+    weekday: string;
+    time: string;
+    room: string;
+}
+
+export interface FullLectureDetails {
+    unibasId: number;
+    courseNumber: string | null;
+    title: string;
+    description: {
+        semester: string | null;
+        pattern: string | null;
+        lecturers: string | null;
+        content: string | null;
+        learningObjectives: string | null;
+        remarks: string | null;
+    };
+    admissionRequirements: {
+        requirements: string | null;
+        registration: string | null;
+        language: string | null;
+        digitalMedia: string | null;
+    };
+    datesAndRooms: {
+        pattern: RecurringPatternRow[];
+        sessions: DetailEvent[];
+    };
+    modules: string[];
+    assessment: {
+        format: string | null;
+        details: string | null;
+        registration: string | null;
+        retake: string | null;
+        scale: string | null;
+        retakeOnFail: string | null;
+        faculty: string | null;
+        offeredBy: string | null;
+    };
 }

@@ -34,6 +34,7 @@ export interface LectureDetail {
     lecturers: string | null;
     assessment_format: string | null;
     assessment_details: string | null;
+    content: string | null;
     imported_at: string | null;
     events: LectureDetailEvent[];
     recurringTimes: RecurringTime[];
@@ -132,7 +133,7 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
     const detail = db.prepare(`
         SELECT id, unibas_id, course_number, title,
             language, semester, offered_by, faculty,
-            lecturers, assessment_format, assessment_details, imported_at
+            lecturers, assessment_format, assessment_details, content, imported_at
         FROM lecture_details WHERE unibas_id = ?
     `).get(unibasId) as Omit<LectureDetail, 'events' | 'recurringTimes' | 'modules'> | undefined;
 
@@ -156,6 +157,7 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
             lecturers: catalogEntry.lecturer,
             assessment_format: null,
             assessment_details: null,
+            content: null,
             imported_at: null,
             events: [],
             recurringTimes,
@@ -171,4 +173,15 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
     `).all(detail.id) as LectureDetailEvent[];
 
     return { ...detail, events, recurringTimes, modules };
+}
+
+// Raw HTML for a lecture, stored during "Import All Lectures" — used to
+// re-parse the full 5-section detail view (Details tab) on demand, without
+// needing another network fetch.
+export function getLectureRawHtml(unibasId: number, periodeId: string, lang: string): string | null {
+    const db = getDb(periodeId, lang);
+    const row = db.prepare(`
+        SELECT raw_html FROM lecture_details WHERE unibas_id = ?
+    `).get(unibasId) as { raw_html: string | null } | undefined;
+    return row?.raw_html ?? null;
 }

@@ -233,8 +233,8 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
                 INSERT INTO lecture_details
                 (unibas_id, course_number, title, language, semester,
                 offered_by, faculty, lecturers, assessment_format,
-                assessment_details, raw_html, imported_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+                assessment_details, content, raw_html, imported_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
                 ON CONFLICT(unibas_id) DO UPDATE SET
                     course_number=excluded.course_number, title=excluded.title,
                     language=excluded.language, semester=excluded.semester,
@@ -242,11 +242,12 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
                     lecturers=excluded.lecturers,
                     assessment_format=excluded.assessment_format,
                     assessment_details=excluded.assessment_details,
+                    content=excluded.content,
                     raw_html=excluded.raw_html, imported_at=excluded.imported_at
             `).run(row.unibas_id, parsed.courseNumber, parsed.title,
                 parsed.language, parsed.semester, parsed.offeredBy,
                 parsed.faculty, parsed.lecturers, parsed.assessmentFormat,
-                parsed.assessmentDetails, html);
+                parsed.assessmentDetails, parsed.content, html);
 
             const detail = db.prepare(
                 `SELECT id FROM lecture_details WHERE unibas_id = ?`
