@@ -25,7 +25,8 @@
       "height": 800,
       "minWidth": 800,
       "minHeight": 600,
-      "enableInspector": true
+      "enableInspector": true,
+      "exitProcessOnClose": false
     }
   },
   "cli": {
