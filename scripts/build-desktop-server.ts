@@ -90,13 +90,20 @@ async function main() {
 
     for (const { bunTarget, dir, binaryName } of targets) {
         const targetDir = `${OUT_DIR}/${dir}`;
+
+        // WICHTIG: Kompletten Plattform-Ordner leeren, nicht nur assets/.
+        // Frühere Architektur-Iterationen legten hier zusätzlich bun/- und
+        // app/-Unterordner an (inkl. einer vollständigen node_modules-Kopie,
+        // teils hunderte MB) - ohne dieses Aufräumen blieben solche
+        // Datenleichen liegen und wurden von `neu build`s copyItems bei
+        // jedem Durchlauf unnötig mitkopiert (spürbar langsamer Build).
+        await rm(targetDir, { recursive: true, force: true });
         await mkdir(targetDir, { recursive: true });
 
         console.log(`→ bun build --compile --target=${bunTarget} → ${targetDir}/${binaryName}`);
         await $`bun build ./build/index.js --compile --target=${bunTarget} --outfile ${targetDir}/${binaryName}`;
 
         console.log(`→ kopiere build/client/ nach ${targetDir}/assets/client/`);
-        await rm(`${targetDir}/assets`, { recursive: true, force: true });
         await mkdir(`${targetDir}/assets`, { recursive: true });
         await cp("build/client", `${targetDir}/assets/client`, { recursive: true });
     }
