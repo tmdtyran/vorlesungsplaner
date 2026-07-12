@@ -83,7 +83,11 @@ const dir = (() => {
 
 async function main() {
     console.log("→ vite build (SvelteKit, adapter-node)…");
-    await $`bun x vite build`;
+    // WICHTIG: `--bun` erzwingt, dass `bun x` vite tatsaechlich mit der
+    // Bun-Runtime ausfuehrt statt (auf Windows moeglich) ueber einen
+    // node.exe-Shim - sonst schlaegt der `import("bun:sqlite")` in
+    // src/lib/server/db.ts hier genauso fehl wie zuvor bei `bun run dev`.
+    await $`bun --bun x vite build`;
 
     console.log("→ patche build/env.js für --assets-dir-Override…");
     await patchEnvJsForAssetsDirOverride();
