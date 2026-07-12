@@ -111,4 +111,5 @@ export interface FullLectureDetails {
         faculty: string | null;
         offeredBy: string | null;
     };
+    debugRawHtmlSnippet?: string;
 }

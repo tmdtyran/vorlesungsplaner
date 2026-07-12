@@ -145,6 +145,17 @@
                     {#if !full.description.content && !full.description.learningObjectives && !full.description.remarks}
                         <p class="text-sm text-slate-400">Keine Beschreibung vorhanden.</p>
                     {/if}
+                    {#if full.debugRawHtmlSnippet}
+                        <details class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <summary class="text-xs font-semibold text-amber-700 uppercase tracking-wide cursor-pointer">
+                                ⚠ Debug: Rohes HTML (keine Felder erkannt)
+                            </summary>
+                            <p class="text-xs text-amber-700 mt-2 mb-2">
+                                Es konnten keine Label/Wert-Paare auf dieser Seite erkannt werden. Kopiere den Ausschnitt unten und teile ihn, damit der Parser angepasst werden kann.
+                            </p>
+                            <pre class="text-[10px] text-slate-600 bg-white border border-slate-200 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">{full.debugRawHtmlSnippet}</pre>
+                        </details>
+                    {/if}
                 </div>
             {:else if activeSubTab === 'admission'}
                 <div class="max-w-3xl space-y-4">

@@ -22,26 +22,46 @@ export interface ParsedEvent {
 }
 
 /**
- * Scans every <table><tr><th>Label</th><td>Value</td></tr></table> block on
- * the page and returns a flat label(lowercased)->value map. UniBasel detail
- * pages render essentially all facts this way, split across several tables
- * (one per tab section: Beschreibung, Teilnahmevoraussetzungen, ...).
+ * Scans every <table> row on the page and returns a flat
+ * label(lowercased)->value map. UniBasel detail pages render facts as
+ * label/value table rows split across several tables (one per tab section:
+ * Beschreibung, Teilnahmevoraussetzungen, ...). Some rows use semantic
+ * <th>/<td> pairs, others use two plain <td> cells with the label just
+ * bold-styled via CSS — this handles both by accepting ANY row with exactly
+ * two direct-child cells (th or td), using the first as label.
  */
 function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
     const fields: Record<string, string> = {};
+
     $("table").each((_, table) => {
         $(table)
             .find("tr")
             .each((_, row) => {
-                const th = $(row).find("th").first();
-                const td = $(row).find("td").first();
-                if (th.length && td.length) {
-                    const label = th.text().replace(/\s+/g, " ").trim().replace(/:$/, "");
-                    const value = td.text().replace(/\s+/g, " ").trim();
-                    if (label && value) fields[label.toLowerCase()] = value;
+                const cells = $(row).children("th, td");
+                if (cells.length === 2) {
+                    const label = $(cells[0]).text().replace(/\s+/g, " ").trim().replace(/:$/, "");
+                    const value = $(cells[1]).text().replace(/\s+/g, " ").trim();
+                    if (label && value && !fields[label.toLowerCase()]) {
+                        fields[label.toLowerCase()] = value;
+                    }
                 }
             });
     });
+
+    // Fallback pattern: <dl><dt>Label</dt><dd>Value</dd></dl>
+    $("dl").each((_, dl) => {
+        $(dl)
+            .find("dt")
+            .each((_, dt) => {
+                const label = $(dt).text().replace(/\s+/g, " ").trim().replace(/:$/, "");
+                const dd = $(dt).next("dd");
+                const value = dd.length ? dd.text().replace(/\s+/g, " ").trim() : "";
+                if (label && value && !fields[label.toLowerCase()]) {
+                    fields[label.toLowerCase()] = value;
+                }
+            });
+    });
+
     return fields;
 }
 
@@ -221,6 +241,10 @@ export interface FullLectureDetails {
         faculty: string | null;            // "Zuständige Fakultät"
         offeredBy: string | null;          // "Anbietende Organisationseinheit"
     };
+    // Only populated when every structured field above came back empty —
+    // lets the UI show a raw HTML preview for debugging instead of a
+    // silent "nothing found" result.
+    debugRawHtmlSnippet?: string;
 }
 
 export function parseFullLectureDetails(html: string, unibasId: number): FullLectureDetails {
@@ -245,7 +269,7 @@ export function parseFullLectureDetails(html: string, unibasId: number): FullLec
         ? moduleRaw.split(/,|;/).map(m => m.trim()).filter(Boolean)
         : [];
 
-    return {
+    const result: FullLectureDetails = {
         unibasId,
         courseNumber,
         title,
@@ -279,4 +303,16 @@ export function parseFullLectureDetails(html: string, unibasId: number): FullLec
             offeredBy: getField("Anbietende Organisationseinheit", "Offered by")
         }
     };
+
+    const hasAnyField =
+        Object.values(result.description).some(Boolean) ||
+        Object.values(result.admissionRequirements).some(Boolean) ||
+        Object.values(result.assessment).some(Boolean) ||
+        modules.length > 0;
+
+    if (!hasAnyField) {
+        result.debugRawHtmlSnippet = html.slice(0, 3000);
+    }
+
+    return result;
 }
