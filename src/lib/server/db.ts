@@ -25,22 +25,47 @@ import type { Database as BunDatabase } from "bun:sqlite";
 // `typeof Bun !== "undefined"` abgesichertem Import - der wird unter Node
 // nie ausgefuehrt, /* @vite-ignore */ verhindert zusaetzlich, dass Vites
 // Bundler den Import schon beim Bauen selbst aufzuloesen versucht.
-const isBun = typeof Bun !== "undefined";
-
+// WICHTIG: Weder "typeof Bun !== 'undefined'" noch "process.versions.bun"
+// sind zuverlaessig: Vites neuer ModuleRunner (ab Vite 6/8) fuehrt SSR-
+// Module in einem eigenen Ausfuehrungskontext aus (ESModulesEvaluator),
+// in dem globale Bun-spezifische Objekte nicht sichtbar sind - selbst
+// wenn der Host-Prozess tatsaechlich per `bun run dev` gestartet wurde.
+// Ein Check auf globale Variablen liefert dort also ein falsches
+// Ergebnis, OBWOHL bun:sqlite an sich importierbar waere.
+// Deshalb: nicht raten, sondern den Import einfach versuchen. Nur wenn
+// der ECHTE Import von "bun:sqlite" fehlschlaegt (z.B. weil wir wirklich
+// unter Node/SvelteKits Analyse-Worker laufen, wo "bun:"-URLs mit
+// ERR_UNSUPPORTED_ESM_URL_SCHEME abgelehnt werden), greift der Stub.
 let DatabaseCtor: new (path: string) => BunDatabase;
-if (isBun) {
+let isBun = true;
+try {
     const mod = await import(/* @vite-ignore */ "bun:sqlite");
     DatabaseCtor = mod.Database;
-} else {
+} catch {
+    isBun = false;
+}
+if (!isBun) {
     // Nur fuer SvelteKits Analyse-Schritt (siehe oben) - liefert ein
-    // harmloses No-Op-Stub, damit das Modul dort ueberhaupt geladen werden
-    // kann, ohne dass echte SQL-Aufrufe passieren. Zur echten Laufzeit
-    // (immer unter Bun) wird dieser Zweig nie genommen.
+    // Stub, der NICHT still Erfolg vortaeuscht: jeder echte Aufruf
+    // (exec/prepare/get/all/run) wirft sofort einen klaren Fehler, statt
+    // wie frueher `undefined`/`[]`/`{changes:0}` zurueckzugeben. Der alte
+    // stille No-Op-Stub fuehrte dazu, dass ein kompletter Katalog-Import
+    // ohne jeden Fehler "erfolgreich" durchlief, obwohl NICHTS in die DB
+    // geschrieben wurde (0 Vorlesungen, 0 Zeitslots am Ende) - schwer zu
+    // debuggen, weil nirgends eine Exception auftauchte.
+    const boom = () => {
+        throw new Error(
+            "db.ts: dynamischer Import von 'bun:sqlite' ist fehlgeschlagen. " +
+            "Dieser Stub darf nur waehrend SvelteKits Build-Analyse-Schritt " +
+            "greifen (dort laeuft ein echter Node.js-Worker, der das " +
+            "'bun:'-Protokoll nicht kennt). Falls das hier zur echten " +
+            "Laufzeit passiert: Server MUSS mit `bun` gestartet werden " +
+            "(z.B. `bun run dev`), nicht mit `node`/`npm run dev`."
+        );
+    };
     DatabaseCtor = class {
-        exec() {}
-        prepare() {
-            return { get: () => undefined, all: () => [], run: () => ({ changes: 0 }) };
-        }
+        exec() { boom(); }
+        prepare(): any { boom(); }
         close() {}
     } as unknown as new (path: string) => BunDatabase;
 }
