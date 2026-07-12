@@ -262,11 +262,18 @@ console.log(`Root nodes: ${rootNodes.length}`);
 try {
     await processNodes(rootNodes, null, 0);
     db.exec(`COMMIT`);
+    console.log(`All data committed (${count} nodes).`);
 } catch (err) {
     try { db.exec(`ROLLBACK`); } catch { /* nothing to roll back */ }
     throw err;
 }
 
-const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
-const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
-console.log(`\nDone. ${count} nodes total, ${lectureCount} unique lectures (${placementCount} tree placements incl. cross-listings) — data/${periodeId}_${lang}.db${insertErrors > 0 ? ` (${insertErrors} insert errors)` : ''}`);
+try {
+    const lectureRow = db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
+    const placementRow = db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
+    const lectureCount = lectureRow?.n ?? 0;
+    const placementCount = placementRow?.n ?? 0;
+    console.log(`\nDone. ${count} nodes total, ${lectureCount} unique lectures (${placementCount} tree placements incl. cross-listings) — data/${periodeId}_${lang}.db${insertErrors > 0 ? ` (${insertErrors} insert errors)` : ''}`);
+} catch (statsErr: any) {
+    console.log(`\nDone (data committed), but stats reporting failed: ${statsErr?.message ?? statsErr}`);
+}

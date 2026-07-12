@@ -50,10 +50,15 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
             (hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hierarchy_key) DO UPDATE SET
-            unibas_id=excluded.unibas_id, course_number=excluded.course_number,
-            title=excluded.title, type_label=excluded.type_label,
-            credits=excluded.credits, lecturer=excluded.lecturer,
-            parent_key=excluded.parent_key, node_type=excluded.node_type, depth=excluded.depth
+            unibas_id     = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.unibas_id ELSE excluded.unibas_id END,
+            course_number = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.course_number ELSE excluded.course_number END,
+            title         = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.title ELSE excluded.title END,
+            type_label    = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.type_label ELSE excluded.type_label END,
+            credits       = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.credits ELSE excluded.credits END,
+            lecturer      = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.lecturer ELSE excluded.lecturer END,
+            parent_key    = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.parent_key ELSE excluded.parent_key END,
+            node_type     = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.node_type ELSE excluded.node_type END,
+            depth         = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.depth ELSE excluded.depth END
     `);
     const insertTime = db.prepare(`
         INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
@@ -139,6 +144,10 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
 
     let nodeCount = 0;
     let insertErrors = 0;
+    let leafCandidateCount = 0;   // nodes classified as isLeaf (not lazy, no children)
+    let leafParsedCount = 0;      // of those, how many parseLeafTitle() actually matched
+    let sampleUnparsedShown = 0;  // debug: show a few leaf titles that failed to parse
+    let firstParsedSample: { hk: number; unibasId: number } | null = null;
 
     async function processNodes(nodes: any[], parentKey: string | null, depth: number) {
         for (const node of nodes) {
@@ -146,7 +155,18 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
             if (isNaN(hk)) continue;
 
             const isLeaf = !node.lazy && !node.children?.length;
+            if (isLeaf) leafCandidateCount++;
             const parsed = isLeaf ? parseLeafTitle(node.title) : null;
+            if (isLeaf && parsed) {
+                leafParsedCount++;
+                if (!firstParsedSample && parsed.unibasId) {
+                    firstParsedSample = { hk, unibasId: parsed.unibasId };
+                }
+            }
+            if (isLeaf && !parsed && sampleUnparsedShown < 3) {
+                sampleUnparsedShown++;
+                log(`  [DEBUG] Leaf ohne Match, key=${hk}: ${node.title?.slice(0, 200)}`);
+            }
 
             const unibasId = parsed?.unibasId ?? null;
             const credits = parsed?.credits ?? null;
@@ -197,27 +217,59 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
     try {
         await processNodes(rootNodes, null, 0);
         db.exec(`COMMIT`);
-    } catch (err) {
+        log(`✓ Alle Daten committet (${nodeCount} Knoten). [build: tx-v4]`);
+        log(`  [DEBUG] Leaf-Kandidaten (nicht lazy, keine Kinder): ${leafCandidateCount}, davon erfolgreich geparst: ${leafParsedCount}`);
+
+        // Direct raw sanity check, independent of any earlier assumptions:
+        // how many rows actually exist right now, and what does one of the
+        // known-good parsed rows really contain in the DB?
+        const rawTotal = db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog`).get() as { n: number } | undefined;
+        log(`  [DEBUG] Rohe Gesamtzeilenzahl in lecture_catalog nach Commit: ${rawTotal?.n ?? '(Abfrage fehlgeschlagen)'}`);
+
+        if (firstParsedSample) {
+            const rawRow = db.prepare(`SELECT hierarchy_key, unibas_id, title, node_type FROM lecture_catalog WHERE hierarchy_key = ?`).get(firstParsedSample.hk) as any;
+            log(`  [DEBUG] Stichprobe key=${firstParsedSample.hk}: gespeichert=${JSON.stringify(rawRow)} (erwartet unibas_id=${firstParsedSample.unibasId})`);
+        }
+    } catch (err: any) {
         try { db.exec(`ROLLBACK`); } catch { /* nothing to roll back */ }
+        log(`✗ Import fehlgeschlagen vor dem Commit: ${err?.message ?? err}`);
         throw err;
     }
 
-    log("Speichere Statistik...");
+    // The catalog data itself is already safely committed at this point.
+    // Everything below is just reporting/bookkeeping — wrap it so that ANY
+    // failure here (whatever the cause) can never turn an already-successful
+    // import into a reported failure.
+    try {
+        const lectureRow = db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
+        const placementRow = db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
+        const timeRow = db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as { n: number } | undefined;
 
-    // Defensive: these COUNT queries always return exactly one row in normal
-    // operation, but guard against undefined anyway so a transient hiccup
-    // here (after all data is already safely committed above) can't turn a
-    // fully successful import into a reported failure.
-    const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
-    const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
-    const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any)?.n ?? 0;
-    log(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
+        const lectureCount = lectureRow?.n ?? 0;
+        const placementCount = placementRow?.n ?? 0;
+        const timeCount = timeRow?.n ?? 0;
 
-    setImportMeta(db, {
-        catalog_imported_at: new Date().toISOString(),
-        catalog_node_count: String(nodeCount),
-        catalog_lecture_count: String(lectureCount)
-    });
+        log(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
+
+        setImportMeta(db, {
+            catalog_imported_at: new Date().toISOString(),
+            catalog_node_count: String(nodeCount),
+            catalog_lecture_count: String(lectureCount)
+        });
+    } catch (statsErr: any) {
+        // Data is safe (committed above) — only the reporting step failed.
+        // Log full diagnostics and still mark the import as done so the
+        // status overview correctly shows ✓ instead of a false failure.
+        log(`⚠ Statistik/Meta-Speicherung fehlgeschlagen (Daten sind trotzdem gespeichert): ${statsErr?.message ?? statsErr}`);
+        if (statsErr?.stack) log(`  Stack: ${String(statsErr.stack).split('\n').slice(0, 3).join(' | ')}`);
+        log(`✓ Katalog-Import abgeschlossen: ${nodeCount} Knoten importiert.`);
+        try {
+            setImportMeta(db, {
+                catalog_imported_at: new Date().toISOString(),
+                catalog_node_count: String(nodeCount)
+            });
+        } catch { /* even the minimal meta write failed — nothing more we can do */ }
+    }
 }
 
 async function runLecturesImport(periodeId: string, lang: string, log: (msg: string) => void) {
