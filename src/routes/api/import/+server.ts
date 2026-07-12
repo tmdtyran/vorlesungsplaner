@@ -60,6 +60,7 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
         SELECT id, ?, ?, ?, ? FROM lecture_catalog WHERE hierarchy_key = ?
     `);
 
+    db.exec(`BEGIN TRANSACTION`);
     db.exec(`DELETE FROM lecture_times`);
     db.exec(`DELETE FROM lecture_catalog`);
     log("Bestehender Katalog gelöscht.");
@@ -192,11 +193,24 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
     const rootUrl = `${BASE}/components/hierarchie.cfc?method=getTree&periodId=${periodeId}&hid=&_=${Date.now()}`;
     const rootNodes = await fetchJson(rootUrl);
     log(`Root-Knoten: ${rootNodes.length}`);
-    await processNodes(rootNodes, null, 0);
 
-    const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-    const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-    const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any).n;
+    try {
+        await processNodes(rootNodes, null, 0);
+        db.exec(`COMMIT`);
+    } catch (err) {
+        try { db.exec(`ROLLBACK`); } catch { /* nothing to roll back */ }
+        throw err;
+    }
+
+    log("Speichere Statistik...");
+
+    // Defensive: these COUNT queries always return exactly one row in normal
+    // operation, but guard against undefined anyway so a transient hiccup
+    // here (after all data is already safely committed above) can't turn a
+    // fully successful import into a reported failure.
+    const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
+    const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
+    const timeCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as any)?.n ?? 0;
     log(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
 
     setImportMeta(db, {

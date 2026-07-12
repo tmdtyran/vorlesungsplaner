@@ -39,6 +39,7 @@ console.log(`Session cookies: ${cookieHeader || "(none — server may use IP/Ref
 
 // --- DB setup ---
 const db = getDb(periodeId, lang);
+db.exec(`BEGIN TRANSACTION`);
 db.exec(`DELETE FROM lecture_times`);
 db.exec(`DELETE FROM lecture_catalog`);
 console.log("Cleared existing catalog.");
@@ -258,8 +259,14 @@ const rootUrl = `${BASE}/components/hierarchie.cfc?method=getTree&periodId=${per
 const rootNodes: TreeNode[] = await fetchJson(rootUrl);
 console.log(`Root nodes: ${rootNodes.length}`);
 
-await processNodes(rootNodes, null, 0);
+try {
+    await processNodes(rootNodes, null, 0);
+    db.exec(`COMMIT`);
+} catch (err) {
+    try { db.exec(`ROLLBACK`); } catch { /* nothing to roll back */ }
+    throw err;
+}
 
-const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
-const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any).n;
+const lectureCount = (db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
+const placementCount = (db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as any)?.n ?? 0;
 console.log(`\nDone. ${count} nodes total, ${lectureCount} unique lectures (${placementCount} tree placements incl. cross-listings) — data/${periodeId}_${lang}.db${insertErrors > 0 ? ` (${insertErrors} insert errors)` : ''}`);
