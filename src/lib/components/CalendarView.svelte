@@ -19,6 +19,7 @@
 
     interface CalEvent {
         title: string;
+        typeLabel: string | null;
         startMin: number; // minutes offset from START_HOUR*60
         endMin: number;
         color: string;
@@ -119,7 +120,7 @@
                     seen.add(key);
 
                     const timeLabel = `${t.start_time}–${t.end_time}`;
-                    days[day].push({ title: sel.catalog.title, startMin, endMin, color: colorIdx.toString(), timeLabel });
+                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIdx.toString(), timeLabel });
                 }
             } else if (sel.detail?.events?.length) {
                 // Fallback: derive weekday from lecture_detail_events dates
@@ -138,7 +139,7 @@
                     seen.add(key);
 
                     const timeLabel = `${ev.start_time}–${ev.end_time}`;
-                    days[day].push({ title: sel.catalog.title, startMin, endMin, color: colorIdx.toString(), timeLabel });
+                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIdx.toString(), timeLabel });
                 }
             }
         });
@@ -249,6 +250,9 @@
                                     title="{ev.title} · {ev.timeLabel}"
                                 >
                                     <div class="px-1.5 py-1 h-full flex flex-col justify-start">
+                                        {#if ev.typeLabel && heightPx > 36}
+                                            <p class="text-[9px] font-bold uppercase tracking-wide opacity-70 leading-tight">{ev.typeLabel}</p>
+                                        {/if}
                                         <p class="text-[11px] font-semibold leading-tight line-clamp-2">{ev.title}</p>
                                         {#if heightPx > 36}
                                             <p class="text-[10px] opacity-60 mt-0.5">{ev.timeLabel}</p>
@@ -268,6 +272,9 @@
                 {@const c = COLORS[i % COLORS.length]}
                 <div class="flex items-center gap-1.5 text-xs text-slate-700">
                     <span class="h-2.5 w-2.5 rounded-sm {c.dot}"></span>
+                    {#if sel.catalog.type_label}
+                        <span class="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{sel.catalog.type_label}</span>
+                    {/if}
                     <span class="max-w-56 truncate">{sel.catalog.title}</span>
                 </div>
             {/each}

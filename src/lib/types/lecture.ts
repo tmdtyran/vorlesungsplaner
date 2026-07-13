@@ -81,6 +81,7 @@ export interface RecurringPatternRow {
 export interface FullLectureDetails {
     unibasId: number;
     courseNumber: string | null;
+    typeLabel: string | null;
     title: string;
     description: {
         semester: string | null;

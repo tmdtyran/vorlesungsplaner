@@ -58,7 +58,14 @@
                                 />
                             </td>
                             <td class="px-4 py-3">
-                                <p class="font-medium text-slate-800">{sel.catalog.title}</p>
+                                <div class="flex items-center gap-2">
+                                    {#if sel.catalog.type_label}
+                                        <span class="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">
+                                            {sel.catalog.type_label}
+                                        </span>
+                                    {/if}
+                                    <p class="font-medium text-slate-800">{sel.catalog.title}</p>
+                                </div>
                                 {#if sel.catalog.course_number}
                                     <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>
                                 {/if}

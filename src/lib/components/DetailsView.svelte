@@ -5,7 +5,7 @@
 
     type SubTab = 'description' | 'admission' | 'dates' | 'modules' | 'assessment';
 
-    let idInput = $state(nav.detailsUnibasId ? String(nav.detailsUnibasId) : '');
+    let courseNumberInput = $state('');
     let loading = $state(false);
     let errorMsg = $state<string | null>(null);
     let full = $state<FullLectureDetails | null>(null);
@@ -19,7 +19,36 @@
         { id: 'assessment', label: 'Leistungsüberprüfung', icon: '📝' },
     ];
 
-    async function loadDetails(unibasId: number) {
+    const WEEKDAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+    // "2026-09-15" -> "Dienstag 15-09-2026"
+    function formatDate(iso: string): string {
+        const d = new Date(iso + 'T00:00:00');
+        if (isNaN(d.getTime())) return iso;
+        const wd = WEEKDAYS_DE[d.getDay()];
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        return `${wd} ${dd}-${mm}-${d.getFullYear()}`;
+    }
+
+    function weekdayOf(iso: string): string {
+        const d = new Date(iso + 'T00:00:00');
+        return isNaN(d.getTime()) ? '' : WEEKDAYS_DE[d.getDay()];
+    }
+
+    // Some individual session rows have no per-row time override (shown as
+    // "–" on the source page) since they simply follow the recurring weekly
+    // slot — fall back to that pattern's time for the matching weekday.
+    function sessionTime(session: { date: string; start_time: string; end_time: string }): string {
+        if (session.start_time && session.end_time) {
+            return `${session.start_time}–${session.end_time}`;
+        }
+        const wd = weekdayOf(session.date).toLowerCase();
+        const match = full?.datesAndRooms.pattern.find(p => p.weekday.toLowerCase() === wd);
+        return match ? match.time : '–';
+    }
+
+    async function loadByUnibasId(unibasId: number) {
         loading = true;
         errorMsg = null;
         full = null;
@@ -32,6 +61,27 @@
                 return;
             }
             full = await res.json();
+            courseNumberInput = full?.courseNumber ?? courseNumberInput;
+            activeSubTab = 'description';
+        } catch (err: any) {
+            errorMsg = err?.message ?? String(err);
+        }
+        loading = false;
+    }
+
+    async function loadByCourseNumber(courseNumber: string) {
+        loading = true;
+        errorMsg = null;
+        full = null;
+        try {
+            const res = await fetch(`/api/lectures/by-course-number/${encodeURIComponent(courseNumber)}/full?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                errorMsg = err.error ?? `Keine Vorlesung mit Kursnummer "${courseNumber}" gefunden.`;
+                loading = false;
+                return;
+            }
+            full = await res.json();
             activeSubTab = 'description';
         } catch (err: any) {
             errorMsg = err?.message ?? String(err);
@@ -40,38 +90,32 @@
     }
 
     function handleSubmit() {
-        const id = parseInt(idInput.trim());
-        if (isNaN(id)) {
-            errorMsg = 'Bitte eine gültige Vorlesungs-ID eingeben.';
+        const cn = courseNumberInput.trim();
+        if (!cn) {
+            errorMsg = 'Bitte eine Kursnummer eingeben (z.B. 65935-01).';
             return;
         }
-        if (id === nav.detailsUnibasId) {
-            // Same ID resubmitted (e.g. retry after an error) — the effect
-            // won't refire on an unchanged value, so load explicitly.
-            loadDetails(id);
-        } else {
-            nav.detailsUnibasId = id;
-        }
+        loadByCourseNumber(cn);
     }
 
-    // Reacts both to manual submit (nav.detailsUnibasId set above) and to
-    // arriving via the "Weiteres" button from Kursauswahl.
+    // Arriving via the "Weiteres" button from Kursauswahl — that flow knows
+    // the internal unibas_id already, so it loads directly by ID and then
+    // syncs the visible field to the matching course number.
     $effect(() => {
         if (nav.detailsUnibasId !== null) {
-            idInput = String(nav.detailsUnibasId);
-            loadDetails(nav.detailsUnibasId);
+            loadByUnibasId(nav.detailsUnibasId);
         }
     });
 </script>
 
 <div class="flex h-full flex-col">
-    <!-- ID input -->
+    <!-- Course number input -->
     <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
-        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Vorlesungs-ID</label>
+        <label class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Kursnummer</label>
         <input
-            bind:value={idInput}
+            bind:value={courseNumberInput}
             onkeydown={(e) => e.key === 'Enter' && handleSubmit()}
-            placeholder="z.B. 293968"
+            placeholder="z.B. 65935-01"
             class="w-48 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
         />
         <button
@@ -85,8 +129,14 @@
             Laden
         </button>
         {#if full}
-            <span class="ml-2 text-sm text-slate-500 truncate">
-                {full.courseNumber ?? ''} {full.courseNumber ? '·' : ''} <span class="font-medium text-slate-700">{full.title}</span>
+            <span class="ml-2 flex items-center gap-2 text-sm text-slate-500 truncate">
+                {full.courseNumber ?? ''}
+                {#if full.typeLabel}
+                    <span class="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">
+                        {full.typeLabel}
+                    </span>
+                {/if}
+                <span class="font-medium text-slate-700">{full.title}</span>
             </span>
         {/if}
     </div>
@@ -101,7 +151,7 @@
     {:else if !full}
         <div class="flex flex-1 flex-col items-center justify-center gap-2 text-slate-400">
             <span class="text-3xl">📋</span>
-            <p class="text-sm">Gib eine Vorlesungs-ID ein, um alle Details zu sehen.</p>
+            <p class="text-sm">Gib eine Kursnummer ein, um alle Details zu sehen.</p>
         </div>
     {:else}
         <!-- Sub-tab bar -->
@@ -125,22 +175,22 @@
             {#if activeSubTab === 'description'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.description.semester}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Semester</span><p class="text-sm text-slate-700">{full.description.semester}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Semester</span><p class="text-sm text-slate-600">{full.description.semester}</p></div>
                     {/if}
                     {#if full.description.pattern}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Angebotsmuster</span><p class="text-sm text-slate-700">{full.description.pattern}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Angebotsmuster</span><p class="text-sm text-slate-600">{full.description.pattern}</p></div>
                     {/if}
                     {#if full.description.lecturers}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-700">{full.description.lecturers}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-600">{full.description.lecturers}</p></div>
                     {/if}
                     {#if full.description.content}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Inhalt</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.description.content}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Inhalt</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.content}</p></div>
                     {/if}
                     {#if full.description.learningObjectives}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Lernziele</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.description.learningObjectives}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Lernziele</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.learningObjectives}</p></div>
                     {/if}
                     {#if full.description.remarks}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Bemerkungen</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.description.remarks}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Bemerkungen</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.remarks}</p></div>
                     {/if}
                     {#if !full.description.content && !full.description.learningObjectives && !full.description.remarks}
                         <p class="text-sm text-slate-400">Keine Beschreibung vorhanden.</p>
@@ -160,16 +210,16 @@
             {:else if activeSubTab === 'admission'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.admissionRequirements.requirements}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Teilnahmevoraussetzungen</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.admissionRequirements.requirements}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Teilnahmevoraussetzungen</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.admissionRequirements.requirements}</p></div>
                     {/if}
                     {#if full.admissionRequirements.registration}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Anmeldung zur Lehrveranstaltung</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.admissionRequirements.registration}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anmeldung zur Lehrveranstaltung</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.admissionRequirements.registration}</p></div>
                     {/if}
                     {#if full.admissionRequirements.language}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Unterrichtssprache</span><p class="text-sm text-slate-700">{full.admissionRequirements.language}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Unterrichtssprache</span><p class="text-sm text-slate-600">{full.admissionRequirements.language}</p></div>
                     {/if}
                     {#if full.admissionRequirements.digitalMedia}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Einsatz digitaler Medien</span><p class="text-sm text-slate-700">{full.admissionRequirements.digitalMedia}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Einsatz digitaler Medien</span><p class="text-sm text-slate-600">{full.admissionRequirements.digitalMedia}</p></div>
                     {/if}
                     {#if !full.admissionRequirements.requirements && !full.admissionRequirements.registration}
                         <p class="text-sm text-slate-400">Keine Angaben vorhanden.</p>
@@ -179,7 +229,7 @@
                 <div class="max-w-3xl space-y-6">
                     {#if full.datesAndRooms.pattern.length > 0}
                         <div>
-                            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Regelmässigkeit</span>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">Regelmässigkeit</span>
                             <div class="flex flex-wrap gap-2">
                                 {#each full.datesAndRooms.pattern as p}
                                     <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 text-xs text-indigo-700 font-medium">
@@ -191,7 +241,7 @@
                     {/if}
                     {#if full.datesAndRooms.sessions.length > 0}
                         <div>
-                            <span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-2">Einzeltermine ({full.datesAndRooms.sessions.length})</span>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">Einzeltermine ({full.datesAndRooms.sessions.length})</span>
                             <div class="rounded-lg border border-slate-200 overflow-hidden">
                                 <table class="w-full text-sm">
                                     <thead class="bg-slate-50 border-b border-slate-200">
@@ -204,8 +254,8 @@
                                     <tbody>
                                         {#each full.datesAndRooms.sessions as s}
                                             <tr class="border-b border-slate-100 last:border-0">
-                                                <td class="px-3 py-2 text-slate-700">{s.date}</td>
-                                                <td class="px-3 py-2 text-slate-700">{s.start_time}–{s.end_time}</td>
+                                                <td class="px-3 py-2 text-slate-700">{formatDate(s.date)}</td>
+                                                <td class="px-3 py-2 text-slate-700">{sessionTime(s)}</td>
                                                 <td class="px-3 py-2 text-slate-700">{s.room}</td>
                                             </tr>
                                         {/each}
@@ -221,9 +271,9 @@
             {:else if activeSubTab === 'modules'}
                 <div class="max-w-3xl">
                     {#if full.modules.length > 0}
-                        <div class="flex flex-wrap gap-2">
+                        <div class="flex flex-col gap-2">
                             {#each full.modules as m}
-                                <span class="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2 text-sm text-emerald-700 font-medium">{m}</span>
+                                <div class="rounded-lg bg-emerald-50 border border-emerald-100 px-3 py-2.5 text-sm text-emerald-700 font-medium">{m}</div>
                             {/each}
                         </div>
                     {:else}
@@ -233,28 +283,28 @@
             {:else if activeSubTab === 'assessment'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.assessment.format}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Prüfung</span><p class="text-sm text-slate-700">{full.assessment.format}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Prüfung</span><p class="text-sm text-slate-600">{full.assessment.format}</p></div>
                     {/if}
                     {#if full.assessment.details}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Hinweise zur Prüfung</span><p class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{full.assessment.details}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Hinweise zur Prüfung</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.assessment.details}</p></div>
                     {/if}
                     {#if full.assessment.registration}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">An-/Abmeldung zur Prüfung</span><p class="text-sm text-slate-700">{full.assessment.registration}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">An-/Abmeldung zur Prüfung</span><p class="text-sm text-slate-600">{full.assessment.registration}</p></div>
                     {/if}
                     {#if full.assessment.retake}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Wiederholungsprüfung</span><p class="text-sm text-slate-700">{full.assessment.retake}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Wiederholungsprüfung</span><p class="text-sm text-slate-600">{full.assessment.retake}</p></div>
                     {/if}
                     {#if full.assessment.scale}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Skala</span><p class="text-sm text-slate-700">{full.assessment.scale}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Skala</span><p class="text-sm text-slate-600">{full.assessment.scale}</p></div>
                     {/if}
                     {#if full.assessment.retakeOnFail}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Belegen bei Nichtbestehen</span><p class="text-sm text-slate-700">{full.assessment.retakeOnFail}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Belegen bei Nichtbestehen</span><p class="text-sm text-slate-600">{full.assessment.retakeOnFail}</p></div>
                     {/if}
                     {#if full.assessment.faculty}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Zuständige Fakultät</span><p class="text-sm text-slate-700">{full.assessment.faculty}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Zuständige Fakultät</span><p class="text-sm text-slate-600">{full.assessment.faculty}</p></div>
                     {/if}
                     {#if full.assessment.offeredBy}
-                        <div><span class="text-xs font-semibold text-slate-500 uppercase tracking-wide block mb-1">Anbietende Organisationseinheit</span><p class="text-sm text-slate-700">{full.assessment.offeredBy}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anbietende Organisationseinheit</span><p class="text-sm text-slate-600">{full.assessment.offeredBy}</p></div>
                     {/if}
                 </div>
             {/if}

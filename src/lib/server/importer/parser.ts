@@ -2,6 +2,7 @@ import * as cheerio from "cheerio";
 
 export interface ParsedLecture {
     courseNumber: string | null;
+    typeLabel: string | null;
     title: string;
     language: string | null;
     semester: string | null;
@@ -65,7 +66,7 @@ function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
     return fields;
 }
 
-function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNumber: string | null; title: string } {
+function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNumber: string | null; typeLabel: string | null; title: string } {
     let headingText = "";
     $("h1, h2, h3").each((_, el) => {
         const t = $(el).text().replace(/\s+/g, " ").trim();
@@ -75,17 +76,19 @@ function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNu
     });
 
     let courseNumber: string | null = null;
+    let typeLabel: string | null = null;
     let title = `Lecture ${unibasId}`;
     const headerMatch = headingText.match(
         /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:KP|CP)\)/
     );
     if (headerMatch) {
         courseNumber = headerMatch[1].trim();
+        typeLabel = headerMatch[2].trim();
         title = headerMatch[3].trim();
     } else if (headingText) {
         title = headingText;
     }
-    return { courseNumber, title };
+    return { courseNumber, typeLabel, title };
 }
 
 function extractSessionEvents($: cheerio.CheerioAPI): ParsedEvent[] {
@@ -111,28 +114,80 @@ function extractSessionEvents($: cheerio.CheerioAPI): ParsedEvent[] {
             .slice(1)
             .each((_, row) => {
                 const cells = $(row).find("td");
-                if (cells.length < 2) return;
+                if (cells.length < 1) return;
 
-                const dateText = $(cells[0]).text().replace(/\s+/g, " ").trim();
-                const timeText = $(cells[1]).text().replace(/\s+/g, " ").trim();
-                const roomText = cells.length > 2 ? $(cells[2]).text().replace(/\s+/g, " ").trim() : "";
+                // Classify cells by content rather than fixed position — some
+                // rows have no distinct time cell (e.g. "–" placeholder when
+                // the time is already implied by the recurring pattern), so
+                // relying on a fixed column index breaks alignment.
+                let dateText = "", timeText = "", roomText = "";
+                cells.each((_, cell) => {
+                    const text = $(cell).text().replace(/\s+/g, " ").trim();
+                    if (!text) return;
+                    if (!dateText && /\d{2}\.\d{2}\.\d{4}/.test(text)) {
+                        dateText = text;
+                    } else if (!timeText && /\d{2}[.:]\d{2}\s*-\s*\d{2}[.:]\d{2}/.test(text)) {
+                        timeText = text;
+                    } else if (!roomText && text !== "–" && text !== "-") {
+                        roomText = text;
+                    }
+                });
 
                 const dateMatch = dateText.match(/(\d{2})\.(\d{2})\.(\d{4})/);
+                if (!dateMatch) return;
                 const timeMatch = timeText.match(/(\d{2})[.:](\d{2})\s*-\s*(\d{2})[.:](\d{2})/);
 
-                if (dateMatch && timeMatch) {
-                    const isoDate = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
-                    events.push({
-                        date: isoDate,
-                        startTime: `${timeMatch[1]}:${timeMatch[2]}`,
-                        endTime: `${timeMatch[3]}:${timeMatch[4]}`,
-                        room: roomText
-                    });
-                }
+                events.push({
+                    date: `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`,
+                    startTime: timeMatch ? `${timeMatch[1]}:${timeMatch[2]}` : "",
+                    endTime: timeMatch ? `${timeMatch[3]}:${timeMatch[4]}` : "",
+                    room: roomText
+                });
             });
     });
 
     return events;
+}
+
+/**
+ * The "Module"/"Modules" field is rendered as a table row whose label cell
+ * spans multiple rows (rowspan), with each module on its own subsequent row
+ * that has only a single (value) cell. A naive "grab the field text and
+ * split on commas" breaks because (a) individual module names themselves
+ * contain commas, and (b) cheerio's .text() concatenates the separate rows
+ * without any separator. This walks the table structurally instead.
+ */
+function extractModules($: cheerio.CheerioAPI): string[] {
+    const modules: string[] = [];
+
+    $("table").each((_, table) => {
+        const rows = $(table).find("tr").toArray();
+
+        for (let i = 0; i < rows.length; i++) {
+            const cells = $(rows[i]).children("th, td");
+            if (cells.length !== 2) continue;
+
+            const label = $(cells[0]).text().replace(/\s+/g, " ").trim().replace(/:$/, "").toLowerCase();
+            if (label !== "module" && label !== "modul" && label !== "modules") continue;
+
+            const firstValue = $(cells[1]).text().replace(/\s+/g, " ").trim();
+            if (firstValue) modules.push(firstValue);
+
+            // Continuation rows: single-cell rows immediately following,
+            // covered by the label cell's rowspan (no label of their own).
+            let j = i + 1;
+            while (j < rows.length) {
+                const contCells = $(rows[j]).children("th, td");
+                if (contCells.length !== 1) break;
+                const value = $(contCells[0]).text().replace(/\s+/g, " ").trim();
+                if (value) modules.push(value);
+                j++;
+            }
+            i = j - 1;
+        }
+    });
+
+    return modules;
 }
 
 function extractRecurringPattern($: cheerio.CheerioAPI): { frequency: string; weekday: string; time: string; room: string }[] {
@@ -176,7 +231,7 @@ function extractRecurringPattern($: cheerio.CheerioAPI): { frequency: string; we
  */
 export function parseLectureDetails(html: string, unibasId: number): ParsedLecture {
     const $ = cheerio.load(html);
-    const { courseNumber, title } = extractHeadingInfo($, unibasId);
+    const { courseNumber, typeLabel, title } = extractHeadingInfo($, unibasId);
     const fields = extractFieldsFromHtml($);
     const events = extractSessionEvents($);
 
@@ -190,6 +245,7 @@ export function parseLectureDetails(html: string, unibasId: number): ParsedLectu
 
     return {
         courseNumber,
+        typeLabel,
         title,
         language: getField("Unterrichtssprache", "Language of instruction"),
         semester: getField("Semester"),
@@ -211,6 +267,7 @@ export function parseLectureDetails(html: string, unibasId: number): ParsedLectu
 export interface FullLectureDetails {
     unibasId: number;
     courseNumber: string | null;
+    typeLabel: string | null;
     title: string;
     description: {
         semester: string | null;
@@ -249,7 +306,7 @@ export interface FullLectureDetails {
 
 export function parseFullLectureDetails(html: string, unibasId: number): FullLectureDetails {
     const $ = cheerio.load(html);
-    const { courseNumber, title } = extractHeadingInfo($, unibasId);
+    const { courseNumber, typeLabel, title } = extractHeadingInfo($, unibasId);
     const fields = extractFieldsFromHtml($);
     const events = extractSessionEvents($);
     const pattern = extractRecurringPattern($);
@@ -264,14 +321,12 @@ export function parseFullLectureDetails(html: string, unibasId: number): FullLec
 
     // Modules are listed directly as a "Module"/"Modules" field on the page
     // itself (in addition to being derivable from the hierarchy tree).
-    const moduleRaw = getField("Module", "Modules");
-    const modules = moduleRaw
-        ? moduleRaw.split(/,|;/).map(m => m.trim()).filter(Boolean)
-        : [];
+    const modules = extractModules($);
 
     const result: FullLectureDetails = {
         unibasId,
         courseNumber,
+        typeLabel,
         title,
         description: {
             semester: getField("Semester"),

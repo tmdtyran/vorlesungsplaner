@@ -96,6 +96,18 @@ export function getCatalogEntryByUnibasId(unibasId: number, periodeId: string, l
     `).get(unibasId) as CatalogLecture | null;
 }
 
+// Public-facing lookup by course number (e.g. "65935-01"), the identifier
+// shown before every lecture title in listings — used by the Details tab
+// search field instead of the internal unibas_id.
+export function getCatalogEntryByCourseNumber(courseNumber: string, periodeId: string, lang: string): CatalogLecture | null {
+    const db = getDb(periodeId, lang);
+    return db.prepare(`
+        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog
+        WHERE course_number = ? AND unibas_id IS NOT NULL
+        ORDER BY id LIMIT 1
+    `).get(courseNumber) as CatalogLecture | null;
+}
+
 // A lecture can be cross-listed under multiple hierarchy branches. For each
 // placement, walk up parent_key to find ancestor nodes whose title marks a
 // "Modul" (module) grouping — these are the modules the lecture can be
