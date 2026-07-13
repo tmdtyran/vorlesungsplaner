@@ -39,9 +39,9 @@
     // Some individual session rows have no per-row time override (shown as
     // "–" on the source page) since they simply follow the recurring weekly
     // slot — fall back to that pattern's time for the matching weekday.
-    function sessionTime(session: { date: string; start_time: string; end_time: string }): string {
-        if (session.start_time && session.end_time) {
-            return `${session.start_time}–${session.end_time}`;
+    function sessionTime(session: { date: string; startTime: string; endTime: string }): string {
+        if (session.startTime && session.endTime) {
+            return `${session.startTime}–${session.endTime}`;
         }
         const wd = weekdayOf(session.date).toLowerCase();
         const match = full?.datesAndRooms.pattern.find(p => p.weekday.toLowerCase() === wd);
