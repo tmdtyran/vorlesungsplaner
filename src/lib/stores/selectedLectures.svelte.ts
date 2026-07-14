@@ -10,24 +10,35 @@ export const selectedLectures = $state<SelectedLecture[]>([]);
 let currentPeriodeId: string | null = null;
 let loadToken = 0; // guards against race conditions from rapid semester switches
 
+interface StoredEntry {
+    unibasId: number;
+    active: boolean;
+}
+
 function storageKey(periodeId: string): string {
     return `vorlesungsplaner:selections:${periodeId}`;
 }
 
-function readStoredIds(periodeId: string): number[] {
+function readStoredEntries(periodeId: string): StoredEntry[] {
     if (typeof localStorage === 'undefined') return [];
     try {
         const raw = localStorage.getItem(storageKey(periodeId));
-        return raw ? JSON.parse(raw) : [];
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        // Backward compat: older versions stored a plain number[] of unibas_ids.
+        if (Array.isArray(parsed) && (parsed.length === 0 || typeof parsed[0] === 'number')) {
+            return (parsed as number[]).map(unibasId => ({ unibasId, active: true }));
+        }
+        return parsed as StoredEntry[];
     } catch {
         return [];
     }
 }
 
-function writeStoredIds(periodeId: string, ids: number[]) {
+function writeStoredEntries(periodeId: string, entries: StoredEntry[]) {
     if (typeof localStorage === 'undefined') return;
     try {
-        localStorage.setItem(storageKey(periodeId), JSON.stringify(ids));
+        localStorage.setItem(storageKey(periodeId), JSON.stringify(entries));
     } catch {
         // storage full or unavailable — ignore, selections just won't persist
     }
@@ -35,10 +46,10 @@ function writeStoredIds(periodeId: string, ids: number[]) {
 
 function persistCurrent() {
     if (!currentPeriodeId) return;
-    const ids = selectedLectures
-        .map(l => l.catalog.unibas_id)
-        .filter((id): id is number => id !== null);
-    writeStoredIds(currentPeriodeId, ids);
+    const entries = selectedLectures
+        .filter(l => l.catalog.unibas_id !== null)
+        .map(l => ({ unibasId: l.catalog.unibas_id as number, active: l.active }));
+    writeStoredEntries(currentPeriodeId, entries);
 }
 
 /**
@@ -50,28 +61,28 @@ export async function loadSelectionsForSemester(periodeId: string, lang: string)
     currentPeriodeId = periodeId;
     const myToken = ++loadToken;
 
-    const ids = readStoredIds(periodeId);
-    if (ids.length === 0) {
+    const entries = readStoredEntries(periodeId);
+    if (entries.length === 0) {
         if (myToken === loadToken) selectedLectures.splice(0, selectedLectures.length);
         return;
     }
 
     const loaded: SelectedLecture[] = [];
-    for (const unibasId of ids) {
+    for (const entry of entries) {
         try {
-            const catRes = await fetch(`/api/lectures/catalog-entry/${unibasId}?periodeId=${periodeId}&lang=${lang}`);
+            const catRes = await fetch(`/api/lectures/catalog-entry/${entry.unibasId}?periodeId=${periodeId}&lang=${lang}`);
             if (!catRes.ok) continue;
             const catalog: CatalogEntry = await catRes.json();
 
             let detail: LectureDetail | null = null;
             try {
-                const detRes = await fetch(`/api/lectures/${unibasId}?periodeId=${periodeId}&lang=${lang}`);
+                const detRes = await fetch(`/api/lectures/${entry.unibasId}?periodeId=${periodeId}&lang=${lang}`);
                 if (detRes.ok) detail = await detRes.json();
             } catch {
                 // detail fetch failing shouldn't block showing the selection
             }
 
-            loaded.push({ catalog, detail, selectedModuleIndex: 0, included: true });
+            loaded.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: entry.active });
         } catch {
             // skip lectures that can't be resolved (e.g. removed from catalog)
         }
@@ -87,7 +98,7 @@ export function addLecture(catalog: CatalogEntry, detail: LectureDetail | null) 
     if (catalog.unibas_id === null) return;
     const exists = selectedLectures.some(l => l.catalog.unibas_id === catalog.unibas_id);
     if (!exists) {
-        selectedLectures.push({ catalog, detail, selectedModuleIndex: 0, included: true });
+        selectedLectures.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: true });
         persistCurrent();
     }
 }
@@ -104,4 +115,19 @@ export function removeLecture(unibasId: number | null) {
 export function isSelected(unibasId: number | null): boolean {
     if (unibasId === null) return false;
     return selectedLectures.some(l => l.catalog.unibas_id === unibasId);
+}
+
+/**
+ * Master visibility toggle for a selected lecture — when off, it's hidden
+ * from the Kalender view and doesn't appear at all in Module & KP (distinct
+ * from ModuleView's own per-row "count toward calculation" checkbox, which
+ * only matters for lectures that ARE active/visible).
+ */
+export function toggleActive(unibasId: number | null) {
+    if (unibasId === null) return;
+    const sel = selectedLectures.find(l => l.catalog.unibas_id === unibasId);
+    if (sel) {
+        sel.active = !sel.active;
+        persistCurrent();
+    }
 }

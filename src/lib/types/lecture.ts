@@ -69,6 +69,7 @@ export interface SelectedLecture {
     detail: LectureDetail | null;
     selectedModuleIndex: number;
     included: boolean;
+    active: boolean;
 }
 
 export interface RecurringPatternRow {

@@ -3,6 +3,7 @@
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import { goToDetails } from '$lib/stores/navigation.svelte';
+    import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
 
     let allLectures = $state<CatalogEntry[]>([]);
     let viewMode = $state<'flat' | 'hierarchy'>('flat');
@@ -311,55 +312,8 @@
             </div>
         </div>
 
-        <!-- Right scroll box: Selected lectures -->
-        <div class="flex flex-col w-72 shrink-0">
-            <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-slate-50">
-                <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Meine Auswahl</span>
-                <span class="ml-auto rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">{selectedLectures.length}</span>
-            </div>
-            <div class="flex-1 overflow-y-auto bg-slate-50">
-                {#if selectedLectures.length === 0}
-                    <div class="flex flex-col items-center justify-center h-32 text-slate-400 text-xs px-4 text-center gap-2">
-                        <span class="text-2xl">📋</span>
-                        Noch keine Vorlesungen ausgewählt. Klicke auf + um welche hinzuzufügen.
-                    </div>
-                {:else}
-                    {#each selectedLectures as sel}
-                        <div
-                            role="button"
-                            tabindex="0"
-                            onclick={() => selectLecture(sel.catalog, true)}
-                            onkeydown={(e) => e.key === 'Enter' && selectLecture(sel.catalog, true)}
-                            class="group relative flex w-full cursor-pointer items-center gap-3 border-b border-slate-200 px-4 py-3 text-left transition-colors hover:bg-indigo-50"
-                        >
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2">
-                                    {#if sel.catalog.type_label}
-                                        <span class="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">
-                                            {sel.catalog.type_label}
-                                        </span>
-                                    {/if}
-                                    <p class="text-sm font-medium text-slate-800 truncate">{sel.catalog.title}</p>
-                                </div>
-                                {#if sel.catalog.course_number}
-                                    <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>
-                                {/if}
-                            </div>
-                            {#if sel.catalog.credits}
-                                <span class="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                                    {sel.catalog.credits} KP
-                                </span>
-                            {/if}
-                            <button
-                                onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
-                                class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-red-100 text-red-600 text-sm font-bold transition-opacity hover:bg-red-200"
-                                title="Entfernen"
-                            >−</button>
-                        </div>
-                    {/each}
-                {/if}
-            </div>
-        </div>
+        <!-- Right scroll box: Selected lectures (shared component) -->
+        <SelectedLecturesPanel onSelect={(catalog) => selectLecture(catalog, true)} />
     </div>
 
     <!-- Detail panel -->
