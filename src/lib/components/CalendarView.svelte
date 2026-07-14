@@ -1,7 +1,21 @@
 <script lang="ts">
-    import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
+    import { selectedLectures, toggleActive } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
+    import LectureMiniDetail from './LectureMiniDetail.svelte';
+    import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
+
+    let selectedDetail = $state<LectureDetail | null>(null);
+
+    async function handleSelectFromPanel(catalog: CatalogEntry) {
+        if (!catalog.unibas_id) return;
+        try {
+            const res = await fetch(`/api/lectures/${catalog.unibas_id}?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
+            selectedDetail = res.ok ? await res.json() : null;
+        } catch {
+            selectedDetail = null;
+        }
+    }
 
     const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
 
@@ -53,6 +67,13 @@
     let loadedIds = $state<Set<number>>(new Set());
 
     const visibleLectures = $derived(selectedLectures.filter(s => s.active));
+
+    // Colors are tied to unibas_id (not list position), so removing or
+    // deactivating one lecture never shifts the colors of the others.
+    function colorIndexFor(unibasId: number | null): number {
+        if (unibasId === null) return 0;
+        return Math.abs(unibasId) % COLORS.length;
+    }
 
     function parseTime(t: string): number {
         if (!t) return 0;
@@ -155,7 +176,7 @@
     const byDayTypical = $derived((): CalEvent[][] => {
         const days: CalEvent[][] = [[], [], [], [], []];
 
-        visibleLectures.forEach((sel, colorIdx) => {
+        visibleLectures.forEach((sel) => {
             const catalogId = sel.catalog.id;
             const times = timesCache.get(catalogId) ?? [];
 
@@ -175,7 +196,7 @@
                     seen.add(key);
 
                     const timeLabel = `${t.start_time}–${t.end_time}`;
-                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIdx.toString(), timeLabel });
+                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
                 }
             } else if (sel.detail?.events?.length) {
                 const seen = new Set<string>();
@@ -193,7 +214,7 @@
                     seen.add(key);
 
                     const timeLabel = `${ev.start_time}–${ev.end_time}`;
-                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIdx.toString(), timeLabel });
+                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
                 }
             }
         });
@@ -208,7 +229,7 @@
             `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
         );
 
-        visibleLectures.forEach((sel, colorIdx) => {
+        visibleLectures.forEach((sel) => {
             const events = sel.detail?.events ?? [];
             for (const ev of events) {
                 const dayIdx = weekDateStrs.indexOf(ev.date);
@@ -225,7 +246,7 @@
                     title: sel.catalog.title,
                     typeLabel: sel.catalog.type_label,
                     startMin, endMin,
-                    color: colorIdx.toString(),
+                    color: colorIndexFor(sel.catalog.unibas_id).toString(),
                     timeLabel,
                     dateLabel: ev.date
                 });
@@ -467,16 +488,18 @@
             </button>
         </div>
 
-        {#if visibleLectures.length === 0}
+        {#if selectedLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                 <span class="text-4xl">📅</span>
-                <p class="text-sm">
-                    {selectedLectures.length === 0
-                        ? 'Keine Vorlesungen ausgewählt. Wähle zuerst Vorlesungen in der Kursauswahl.'
-                        : 'Alle ausgewählten Vorlesungen sind in "Meine Auswahl" deaktiviert.'}
-                </p>
+                <p class="text-sm">Keine Vorlesungen ausgewählt. Wähle zuerst Vorlesungen in der Kursauswahl.</p>
             </div>
         {:else}
+            {#if visibleLectures.length === 0}
+                <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
+                    <span class="text-4xl">📅</span>
+                    <p class="text-sm">Alle ausgewählten Vorlesungen sind deaktiviert — aktiviere eine in der Legende unten oder in "Meine Auswahl".</p>
+                </div>
+            {:else}
             <div class="flex-1 overflow-auto">
                 <div class="min-w-[640px]">
                     <div class="flex border-b border-slate-200 bg-white sticky top-0 z-10 shadow-sm">
@@ -551,21 +574,31 @@
                     </div>
                 </div>
             </div>
+            {/if}
 
             <div class="border-t border-slate-200 bg-slate-50 px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
-                {#each visibleLectures as sel, i}
-                    {@const c = COLORS[i % COLORS.length]}
-                    <div class="flex items-center gap-1.5 text-xs text-slate-700">
-                        <span class="h-2.5 w-2.5 rounded-sm {c.dot}"></span>
+                {#each selectedLectures as sel (sel.catalog.unibas_id)}
+                    {@const c = COLORS[colorIndexFor(sel.catalog.unibas_id)]}
+                    <button
+                        onclick={() => toggleActive(sel.catalog.unibas_id)}
+                        class="flex items-center gap-1.5 text-xs transition-opacity {sel.active ? 'text-slate-700' : 'text-slate-400 opacity-50'}"
+                        title={sel.active ? 'Im Kalender ausblenden' : 'Im Kalender anzeigen'}
+                    >
+                        <span class="h-3 w-3 rounded-sm border-2 flex items-center justify-center shrink-0
+                            {sel.active ? c.dot + ' border-transparent' : 'border-slate-300 bg-white'}">
+                            {#if sel.active}<span class="text-white text-[7px] leading-none">✓</span>{/if}
+                        </span>
                         {#if sel.catalog.type_label}
                             <span class="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{sel.catalog.type_label}</span>
                         {/if}
                         <span class="max-w-56 truncate">{sel.catalog.title}</span>
-                    </div>
+                    </button>
                 {/each}
             </div>
         {/if}
+
+        <LectureMiniDetail detail={selectedDetail} onClose={() => selectedDetail = null} />
     </div>
 
-    <SelectedLecturesPanel />
+    <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
 </div>

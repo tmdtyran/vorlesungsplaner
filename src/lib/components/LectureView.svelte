@@ -2,8 +2,8 @@
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
-    import { goToDetails } from '$lib/stores/navigation.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
+    import LectureMiniDetail from './LectureMiniDetail.svelte';
 
     let allLectures = $state<CatalogEntry[]>([]);
     let viewMode = $state<'flat' | 'hierarchy'>('flat');
@@ -249,7 +249,14 @@
                                     title="Zur Liste hinzufügen"
                                 >+</button>
                             {:else}
-                                <span class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs" title="Bereits ausgewählt">✓</span>
+                                <button
+                                    onclick={(e) => handleRemove(lecture.unibas_id, e)}
+                                    class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs transition-colors hover:bg-red-100 hover:text-red-600"
+                                    title="Aus Auswahl entfernen"
+                                >
+                                    <span class="group-hover:hidden">✓</span>
+                                    <span class="hidden group-hover:inline">−</span>
+                                </button>
                             {/if}
                         </div>
                     {/each}
@@ -304,7 +311,14 @@
                                     class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold transition-opacity hover:bg-indigo-700"
                                 >+</button>
                             {:else if isLeaf && selected}
-                                <span class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs">✓</span>
+                                <button
+                                    onclick={(e) => handleRemove(lecture.unibas_id, e)}
+                                    class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs transition-colors hover:bg-red-100 hover:text-red-600"
+                                    title="Aus Auswahl entfernen"
+                                >
+                                    <span class="group-hover:hidden">✓</span>
+                                    <span class="hidden group-hover:inline">−</span>
+                                </button>
                             {/if}
                         </div>
                     {/each}
@@ -316,71 +330,7 @@
         <SelectedLecturesPanel onSelect={(catalog) => selectLecture(catalog, true)} />
     </div>
 
-    <!-- Detail panel -->
-    {#if selectedDetail}
-        <div class="border-t border-slate-200 bg-slate-50 p-5 overflow-y-auto max-h-72">
-            <div class="flex items-start justify-between gap-4">
-                <div>
-                    <h3 class="text-base font-semibold text-slate-900">{selectedDetail.title}</h3>
-                    {#if selectedDetail.course_number}
-                        <p class="text-xs text-slate-500 mt-0.5">{selectedDetail.course_number}</p>
-                    {/if}
-                </div>
-                <button
-                    onclick={() => selectedDetail = null}
-                    class="text-slate-400 hover:text-slate-600 text-lg leading-none"
-                >×</button>
-            </div>
-            <div class="mt-3 grid grid-cols-2 gap-x-8 gap-y-2 text-sm lg:grid-cols-4">
-                {#if selectedDetail.semester}
-                    <div><span class="text-xs text-slate-500 block">Semester</span>{selectedDetail.semester}</div>
-                {/if}
-                {#if selectedDetail.language}
-                    <div><span class="text-xs text-slate-500 block">Sprache</span>{selectedDetail.language}</div>
-                {/if}
-                {#if selectedDetail.faculty}
-                    <div><span class="text-xs text-slate-500 block">Fakultät</span>{selectedDetail.faculty}</div>
-                {/if}
-                {#if selectedDetail.offered_by}
-                    <div><span class="text-xs text-slate-500 block">Angeboten von</span>{selectedDetail.offered_by}</div>
-                {/if}
-                {#if selectedDetail.lecturers}
-                    <div class="col-span-2"><span class="text-xs text-slate-500 block">Dozierende</span>{selectedDetail.lecturers}</div>
-                {/if}
-                {#if selectedDetail.assessment_format}
-                    <div class="col-span-2"><span class="text-xs text-slate-500 block">Prüfungsform</span>{selectedDetail.assessment_format}</div>
-                {/if}
-            </div>
-            {#if selectedDetail.recurringTimes?.length > 0}
-                <div class="mt-3">
-                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Regelmässigkeit</p>
-                    <div class="flex flex-wrap gap-2">
-                        {#each selectedDetail.recurringTimes as rt}
-                            <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-1 text-xs text-indigo-700 font-medium">
-                                {rt.frequency ? `${rt.frequency} ` : ''}{rt.weekday} {rt.start_time}–{rt.end_time}
-                            </span>
-                        {/each}
-                    </div>
-                </div>
-            {/if}
-            {#if selectedDetail.content}
-                <div class="mt-3">
-                    <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Beschreibung</p>
-                    <p class="text-sm text-slate-700 leading-relaxed line-clamp-4 whitespace-pre-line">{selectedDetail.content}</p>
-                </div>
-            {:else}
-                <div class="mt-3">
-                    <p class="text-xs text-slate-400">Keine Beschreibung verfügbar — führe "Import All Lectures" aus, um Details zu laden.</p>
-                </div>
-            {/if}
-            <div class="mt-4 flex justify-end">
-                <button
-                    onclick={() => selectedDetail?.unibas_id && goToDetails(selectedDetail.unibas_id)}
-                    class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50"
-                >
-                    Weiteres <span aria-hidden="true">→</span>
-                </button>
-            </div>
-        </div>
-    {/if}
+    <!-- Detail panel (shared component) -->
+    <LectureMiniDetail detail={selectedDetail} onClose={() => selectedDetail = null} />
+
 </div>

@@ -84,6 +84,7 @@ export interface FullLectureDetails {
     courseNumber: string | null;
     typeLabel: string | null;
     title: string;
+    credits: number | null;
     description: {
         semester: string | null;
         pattern: string | null;

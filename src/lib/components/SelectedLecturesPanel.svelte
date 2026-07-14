@@ -1,5 +1,6 @@
 <script lang="ts">
     import { selectedLectures, removeLecture, toggleActive } from '$lib/stores/selectedLectures.svelte';
+    import { goToDetails } from '$lib/stores/navigation.svelte';
     import type { CatalogEntry } from '$lib/types/lecture';
 
     interface Props {
@@ -12,6 +13,11 @@
     function handleRemove(unibasId: number | null, e: MouseEvent) {
         e.stopPropagation();
         removeLecture(unibasId);
+    }
+
+    function handleOpenDetails(unibasId: number | null, e: MouseEvent) {
+        e.stopPropagation();
+        if (unibasId !== null) goToDetails(unibasId);
     }
 
     function handleToggleActive(unibasId: number | null, e: MouseEvent) {
@@ -73,11 +79,18 @@
                                 {sel.catalog.credits} KP
                             </span>
                         {/if}
-                        <button
-                            onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
-                            class="shrink-0 opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
-                            title="Entfernen"
-                        >−</button>
+                        <div class="flex flex-col gap-1 shrink-0">
+                            <button
+                                onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
+                                class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
+                                title="Entfernen"
+                            >−</button>
+                            <button
+                                onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
+                                class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
+                                title="Im Details-Tab öffnen"
+                            >→</button>
+                        </div>
                     </div>
                 {/each}
             {/if}

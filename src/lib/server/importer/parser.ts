@@ -31,6 +31,44 @@ export interface ParsedEvent {
  * bold-styled via CSS — this handles both by accepting ANY row with exactly
  * two direct-child cells (th or td), using the first as label.
  */
+/**
+ * Plain cheerio .text() concatenates all descendant text nodes with no
+ * separator, so multi-paragraph field values (content split across <p> or
+ * <br> tags) collapse into one run-on line. This clones the cell, converts
+ * paragraph/line boundaries into real newlines first, then extracts text —
+ * preserving the original paragraph structure.
+ */
+function cellValueText($: cheerio.CheerioAPI, cell: any): string {
+    const $cell = $(cell).clone();
+    $cell.find("br").replaceWith("\n");
+    $cell.find("li").each((_: number, li: any) => {
+        $(li).append("\n");
+    });
+    $cell.find("p").each((_: number, p: any) => {
+        $(p).before("\n\n").after("\n\n");
+    });
+    $cell.find("div").each((_: number, div: any) => {
+        $(div).append("\n");
+    });
+    let text = $cell.text();
+    text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n");
+    text = text.split("\n").map(line => line.trim()).join("\n").trim();
+    return text;
+}
+
+// A single extracted value occasionally still contains several module names
+// run together (e.g. a <ul><li> list without per-item newlines, or several
+// rowspan-continuation lines that happened to land on one line) — split on
+// the recurring "Modul:"/"Module:" prefix as a defensive fallback.
+function splitMergedModules(text: string): string[] {
+    const parts = text
+        .split(/\n+/)
+        .flatMap(line => line.split(/(?=Modul:|Module:)/g))
+        .map(s => s.trim())
+        .filter(Boolean);
+    return parts.length > 0 ? parts : [text];
+}
+
 function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
     const fields: Record<string, string> = {};
 
@@ -41,7 +79,7 @@ function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
                 const cells = $(row).children("th, td");
                 if (cells.length === 2) {
                     const label = $(cells[0]).text().replace(/\s+/g, " ").trim().replace(/:$/, "");
-                    const value = $(cells[1]).text().replace(/\s+/g, " ").trim();
+                    const value = cellValueText($, cells[1]);
                     if (label && value && !fields[label.toLowerCase()]) {
                         fields[label.toLowerCase()] = value;
                     }
@@ -56,7 +94,7 @@ function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
             .each((_, dt) => {
                 const label = $(dt).text().replace(/\s+/g, " ").trim().replace(/:$/, "");
                 const dd = $(dt).next("dd");
-                const value = dd.length ? dd.text().replace(/\s+/g, " ").trim() : "";
+                const value = dd.length ? cellValueText($, dd) : "";
                 if (label && value && !fields[label.toLowerCase()]) {
                     fields[label.toLowerCase()] = value;
                 }
@@ -66,7 +104,7 @@ function extractFieldsFromHtml($: cheerio.CheerioAPI): Record<string, string> {
     return fields;
 }
 
-function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNumber: string | null; typeLabel: string | null; title: string } {
+function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNumber: string | null; typeLabel: string | null; title: string; credits: number | null } {
     let headingText = "";
     $("h1, h2, h3").each((_, el) => {
         const t = $(el).text().replace(/\s+/g, " ").trim();
@@ -77,6 +115,7 @@ function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNu
 
     let courseNumber: string | null = null;
     let typeLabel: string | null = null;
+    let credits: number | null = null;
     let title = `Lecture ${unibasId}`;
     const headerMatch = headingText.match(
         /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:KP|CP)\)/
@@ -85,10 +124,11 @@ function extractHeadingInfo($: cheerio.CheerioAPI, unibasId: number): { courseNu
         courseNumber = headerMatch[1].trim();
         typeLabel = headerMatch[2].trim();
         title = headerMatch[3].trim();
+        credits = parseFloat(headerMatch[4].replace(',', '.'));
     } else if (headingText) {
         title = headingText;
     }
-    return { courseNumber, typeLabel, title };
+    return { courseNumber, typeLabel, title, credits };
 }
 
 function extractSessionEvents($: cheerio.CheerioAPI): ParsedEvent[] {
@@ -170,8 +210,8 @@ function extractModules($: cheerio.CheerioAPI): string[] {
             const label = $(cells[0]).text().replace(/\s+/g, " ").trim().replace(/:$/, "").toLowerCase();
             if (label !== "module" && label !== "modul" && label !== "modules") continue;
 
-            const firstValue = $(cells[1]).text().replace(/\s+/g, " ").trim();
-            if (firstValue) modules.push(firstValue);
+            const firstValue = cellValueText($, cells[1]);
+            if (firstValue) modules.push(...splitMergedModules(firstValue));
 
             // Continuation rows: single-cell rows immediately following,
             // covered by the label cell's rowspan (no label of their own).
@@ -179,8 +219,8 @@ function extractModules($: cheerio.CheerioAPI): string[] {
             while (j < rows.length) {
                 const contCells = $(rows[j]).children("th, td");
                 if (contCells.length !== 1) break;
-                const value = $(contCells[0]).text().replace(/\s+/g, " ").trim();
-                if (value) modules.push(value);
+                const value = cellValueText($, contCells[0]);
+                if (value) modules.push(...splitMergedModules(value));
                 j++;
             }
             i = j - 1;
@@ -269,6 +309,7 @@ export interface FullLectureDetails {
     courseNumber: string | null;
     typeLabel: string | null;
     title: string;
+    credits: number | null;
     description: {
         semester: string | null;
         pattern: string | null;      // "Angebotsmuster"
@@ -306,7 +347,7 @@ export interface FullLectureDetails {
 
 export function parseFullLectureDetails(html: string, unibasId: number): FullLectureDetails {
     const $ = cheerio.load(html);
-    const { courseNumber, typeLabel, title } = extractHeadingInfo($, unibasId);
+    const { courseNumber, typeLabel, title, credits } = extractHeadingInfo($, unibasId);
     const fields = extractFieldsFromHtml($);
     const events = extractSessionEvents($);
     const pattern = extractRecurringPattern($);
@@ -328,6 +369,7 @@ export function parseFullLectureDetails(html: string, unibasId: number): FullLec
         courseNumber,
         typeLabel,
         title,
+        credits,
         description: {
             semester: getField("Semester"),
             pattern: getField("Angebotsmuster", "Pattern"),

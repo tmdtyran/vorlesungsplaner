@@ -1,7 +1,9 @@
 <script lang="ts">
     import { activeSemester } from '$lib/stores/semester.svelte';
     import { nav } from '$lib/stores/navigation.svelte';
-    import type { FullLectureDetails } from '$lib/types/lecture';
+    import { addLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
+    import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
+    import type { CatalogEntry, FullLectureDetails, LectureDetail } from '$lib/types/lecture';
 
     type SubTab = 'description' | 'admission' | 'dates' | 'modules' | 'assessment';
 
@@ -9,6 +11,8 @@
     let loading = $state(false);
     let errorMsg = $state<string | null>(null);
     let full = $state<FullLectureDetails | null>(null);
+    let catalogEntry = $state<CatalogEntry | null>(null);
+    let lightDetail = $state<LectureDetail | null>(null);
     let activeSubTab = $state<SubTab>('description');
 
     const subTabs: { id: SubTab; label: string; icon: string }[] = [
@@ -48,10 +52,33 @@
         return match ? match.time : '–';
     }
 
+    // Fetches the catalog entry + lightweight detail needed to add this
+    // lecture to "Meine Auswahl" — done alongside the full-details load so
+    // the "+" button works instantly without an extra round trip on click.
+    async function loadSupportingData(unibasId: number) {
+        try {
+            const [catRes, detRes] = await Promise.all([
+                fetch(`/api/lectures/catalog-entry/${unibasId}?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`),
+                fetch(`/api/lectures/${unibasId}?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`)
+            ]);
+            catalogEntry = catRes.ok ? await catRes.json() : null;
+            lightDetail = detRes.ok ? await detRes.json() : null;
+        } catch {
+            catalogEntry = null;
+            lightDetail = null;
+        }
+    }
+
+    function handleAddToSelection() {
+        if (catalogEntry) addLecture(catalogEntry, lightDetail);
+    }
+
     async function loadByUnibasId(unibasId: number) {
         loading = true;
         errorMsg = null;
         full = null;
+        catalogEntry = null;
+        lightDetail = null;
         try {
             const res = await fetch(`/api/lectures/${unibasId}/full?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
             if (!res.ok) {
@@ -63,6 +90,7 @@
             full = await res.json();
             courseNumberInput = full?.courseNumber ?? courseNumberInput;
             activeSubTab = 'description';
+            await loadSupportingData(unibasId);
         } catch (err: any) {
             errorMsg = err?.message ?? String(err);
         }
@@ -73,6 +101,8 @@
         loading = true;
         errorMsg = null;
         full = null;
+        catalogEntry = null;
+        lightDetail = null;
         try {
             const res = await fetch(`/api/lectures/by-course-number/${encodeURIComponent(courseNumber)}/full?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
             if (!res.ok) {
@@ -83,6 +113,7 @@
             }
             full = await res.json();
             activeSubTab = 'description';
+            if (full?.unibasId) await loadSupportingData(full.unibasId);
         } catch (err: any) {
             errorMsg = err?.message ?? String(err);
         }
@@ -98,6 +129,15 @@
         loadByCourseNumber(cn);
     }
 
+    // Selecting a lecture from "Meine Auswahl" fills the search field and
+    // loads its full details, same as typing the course number manually.
+    function handleSelectFromPanel(catalog: CatalogEntry) {
+        if (catalog.course_number) {
+            courseNumberInput = catalog.course_number;
+            loadByCourseNumber(catalog.course_number);
+        }
+    }
+
     // Arriving via the "Weiteres" button from Kursauswahl — that flow knows
     // the internal unibas_id already, so it loads directly by ID and then
     // syncs the visible field to the matching course number.
@@ -108,7 +148,8 @@
     });
 </script>
 
-<div class="flex h-full flex-col">
+<div class="flex h-full">
+<div class="flex-1 flex flex-col min-w-0">
     <!-- Course number input -->
     <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Kursnummer</label>
@@ -129,15 +170,31 @@
             Laden
         </button>
         {#if full}
-            <span class="ml-2 flex items-center gap-2 text-sm text-slate-500 truncate">
+            <span class="ml-2 flex items-center gap-2 text-sm text-slate-500 truncate min-w-0">
                 {full.courseNumber ?? ''}
                 {#if full.typeLabel}
                     <span class="shrink-0 rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600 uppercase tracking-wide">
                         {full.typeLabel}
                     </span>
                 {/if}
-                <span class="font-medium text-slate-700">{full.title}</span>
+                <span class="font-medium text-slate-700 truncate">{full.title}</span>
+                {#if full.credits}
+                    <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                        {full.credits} KP
+                    </span>
+                {/if}
             </span>
+            <button
+                onclick={handleAddToSelection}
+                disabled={!catalogEntry || isSelected(full.unibasId)}
+                class="ml-auto shrink-0 flex h-8 w-8 items-center justify-center rounded-full transition-colors
+                    {isSelected(full.unibasId)
+                        ? 'bg-emerald-100 text-emerald-600 cursor-default'
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed'}"
+                title={isSelected(full.unibasId) ? 'Bereits in Meine Auswahl' : 'Zu Meine Auswahl hinzufügen'}
+            >
+                {isSelected(full.unibasId) ? '✓' : '+'}
+            </button>
         {/if}
     </div>
 
@@ -310,4 +367,7 @@
             {/if}
         </div>
     {/if}
+</div>
+
+<SelectedLecturesPanel onSelect={handleSelectFromPanel} />
 </div>

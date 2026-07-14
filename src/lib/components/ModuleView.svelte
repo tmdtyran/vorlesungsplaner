@@ -1,6 +1,21 @@
 <script lang="ts">
     import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
+    import { activeSemester } from '$lib/stores/semester.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
+    import LectureMiniDetail from './LectureMiniDetail.svelte';
+    import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
+
+    let selectedDetail = $state<LectureDetail | null>(null);
+
+    async function handleSelectFromPanel(catalog: CatalogEntry) {
+        if (!catalog.unibas_id) return;
+        try {
+            const res = await fetch(`/api/lectures/${catalog.unibas_id}?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
+            selectedDetail = res.ok ? await res.json() : null;
+        } catch {
+            selectedDetail = null;
+        }
+    }
 
     // Real modules come from the hierarchy: ancestor nodes titled "Modul: ..."
     // (fetched server-side per lecture). "Freie Leistungen" is always offered
@@ -130,7 +145,9 @@
                 </div>
             </div>
         {/if}
+
+        <LectureMiniDetail detail={selectedDetail} onClose={() => selectedDetail = null} />
     </div>
 
-    <SelectedLecturesPanel />
+    <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
 </div>
