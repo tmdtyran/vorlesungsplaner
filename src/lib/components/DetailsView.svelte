@@ -69,6 +69,11 @@
         }
     }
 
+    function lectureVvzUrl(unibasId: number): string {
+        const path = activeSemester.lang === 'de' ? 'de/vorlesungsverzeichnis' : 'en/course-directory';
+        return `https://vorlesungsverzeichnis.unibas.ch/${path}?id=${unibasId}`;
+    }
+
     function handleAddToSelection() {
         if (catalogEntry) addLecture(catalogEntry, lightDetail);
     }
@@ -195,22 +200,29 @@
                     </span>
                 {/if}
             </span>
-            <button
-                onclick={isSelected(full.unibasId) ? handleRemoveFromSelection : handleAddToSelection}
-                disabled={!isSelected(full.unibasId) && !catalogEntry}
-                class="group ml-auto shrink-0 flex h-8 w-8 items-center justify-center rounded-full transition-colors
-                    {isSelected(full.unibasId)
-                        ? 'bg-emerald-100 text-emerald-600 hover:bg-red-100 hover:text-red-600'
-                        : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed'}"
-                title={isSelected(full.unibasId) ? 'Aus Meine Auswahl entfernen' : 'Zu Meine Auswahl hinzufügen'}
-            >
-                {#if isSelected(full.unibasId)}
-                    <span class="group-hover:hidden">✓</span>
-                    <span class="hidden group-hover:inline">−</span>
-                {:else}
-                    +
-                {/if}
-            </button>
+            <div class="ml-auto flex items-center gap-2 shrink-0">
+                <button
+                    onclick={() => window.open(lectureVvzUrl(full.unibasId), '_blank', 'noopener,noreferrer')}
+                    class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                    title="Im Vorlesungsverzeichnis öffnen"
+                >↗</button>
+                <button
+                    onclick={isSelected(full.unibasId) ? handleRemoveFromSelection : handleAddToSelection}
+                    disabled={!isSelected(full.unibasId) && !catalogEntry}
+                    class="group shrink-0 flex h-8 w-8 items-center justify-center rounded-full transition-colors
+                        {isSelected(full.unibasId)
+                            ? 'bg-emerald-100 text-emerald-600 hover:bg-red-100 hover:text-red-600'
+                            : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed'}"
+                    title={isSelected(full.unibasId) ? 'Aus Meine Auswahl entfernen' : 'Zu Meine Auswahl hinzufügen'}
+                >
+                    {#if isSelected(full.unibasId)}
+                        <span class="group-hover:hidden">✓</span>
+                        <span class="hidden group-hover:inline">−</span>
+                    {:else}
+                        +
+                    {/if}
+                </button>
+            </div>
         {/if}
     </div>
 

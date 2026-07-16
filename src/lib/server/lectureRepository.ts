@@ -1,4 +1,5 @@
 import { getDb } from "./db";
+import { parseFullLectureDetails } from "./importer/parser";
 
 export interface CatalogLecture {
     id: number;
@@ -149,7 +150,21 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
         FROM lecture_details WHERE unibas_id = ?
     `).get(unibasId) as Omit<LectureDetail, 'events' | 'recurringTimes' | 'modules'> | undefined;
 
-    const modules = getModulesForLecture(db, unibasId);
+    // Primary source: parse the "Module" field directly out of the stored
+    // detail page HTML — same logic the Details tab uses. This is more
+    // reliable than walking the catalog hierarchy for a "Modul:"-titled
+    // ancestor, since some lectures (e.g. doctoral courses) sit under
+    // folders like "Doktorat X: Empfehlungen" with no such ancestor at all,
+    // even though the detail page itself does list real modules.
+    let modules: string[] = [];
+    const rawHtml = detail ? getLectureRawHtml(unibasId, periodeId, lang) : null;
+    if (rawHtml) {
+        modules = parseFullLectureDetails(rawHtml, unibasId).modules;
+    }
+    if (modules.length === 0) {
+        modules = getModulesForLecture(db, unibasId);
+    }
+
     const recurringTimes = getRecurringTimesForLecture(db, unibasId);
 
     if (!detail) {

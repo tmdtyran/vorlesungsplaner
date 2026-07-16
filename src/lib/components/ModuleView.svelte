@@ -1,6 +1,7 @@
 <script lang="ts">
     import { selectedLectures } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
+    import { goToDetails } from '$lib/stores/navigation.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
@@ -67,6 +68,7 @@
                             <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Vorlesung</th>
                             <th class="w-24 px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide">KP</th>
                             <th class="w-64 px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Modul</th>
+                            <th class="w-10 px-4 py-3"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -113,6 +115,13 @@
                                             <option value={mi}>{mod}</option>
                                         {/each}
                                     </select>
+                                </td>
+                                <td class="px-4 py-3 text-center">
+                                    <button
+                                        onclick={() => sel.catalog.unibas_id && goToDetails(sel.catalog.unibas_id)}
+                                        class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold transition-colors hover:bg-indigo-100"
+                                        title="Im Details-Tab öffnen"
+                                    >→</button>
                                 </td>
                             </tr>
                         {/each}
