@@ -13,6 +13,7 @@ let loadToken = 0; // guards against race conditions from rapid semester switche
 interface StoredEntry {
     unibasId: number;
     active: boolean;
+    calendarHidden: boolean;
 }
 
 function storageKey(periodeId: string): string {
@@ -27,9 +28,9 @@ function readStoredEntries(periodeId: string): StoredEntry[] {
         const parsed = JSON.parse(raw);
         // Backward compat: older versions stored a plain number[] of unibas_ids.
         if (Array.isArray(parsed) && (parsed.length === 0 || typeof parsed[0] === 'number')) {
-            return (parsed as number[]).map(unibasId => ({ unibasId, active: true }));
+            return (parsed as number[]).map(unibasId => ({ unibasId, active: true, calendarHidden: false }));
         }
-        return parsed as StoredEntry[];
+        return (parsed as any[]).map(e => ({ unibasId: e.unibasId, active: e.active, calendarHidden: e.calendarHidden ?? false }));
     } catch {
         return [];
     }
@@ -48,7 +49,7 @@ function persistCurrent() {
     if (!currentPeriodeId) return;
     const entries = selectedLectures
         .filter(l => l.catalog.unibas_id !== null)
-        .map(l => ({ unibasId: l.catalog.unibas_id as number, active: l.active }));
+        .map(l => ({ unibasId: l.catalog.unibas_id as number, active: l.active, calendarHidden: l.calendarHidden }));
     writeStoredEntries(currentPeriodeId, entries);
 }
 
@@ -82,7 +83,7 @@ export async function loadSelectionsForSemester(periodeId: string, lang: string)
                 // detail fetch failing shouldn't block showing the selection
             }
 
-            loaded.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: entry.active });
+            loaded.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: entry.active, calendarHidden: entry.calendarHidden });
         } catch {
             // skip lectures that can't be resolved (e.g. removed from catalog)
         }
@@ -98,7 +99,7 @@ export function addLecture(catalog: CatalogEntry, detail: LectureDetail | null) 
     if (catalog.unibas_id === null) return;
     const exists = selectedLectures.some(l => l.catalog.unibas_id === catalog.unibas_id);
     if (!exists) {
-        selectedLectures.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: true });
+        selectedLectures.push({ catalog, detail, selectedModuleIndex: 0, included: true, active: true, calendarHidden: false });
         persistCurrent();
     }
 }
@@ -128,6 +129,21 @@ export function toggleActive(unibasId: number | null) {
     const sel = selectedLectures.find(l => l.catalog.unibas_id === unibasId);
     if (sel) {
         sel.active = !sel.active;
+        persistCurrent();
+    }
+}
+
+/**
+ * Legend-only visibility toggle — hides the lecture from the Kalender grid
+ * without touching `active`, so it stays checked/visible in "Meine Auswahl"
+ * and in Module & KP, and remains listed (just dimmed) in the legend so it
+ * can be shown again from there.
+ */
+export function toggleCalendarHidden(unibasId: number | null) {
+    if (unibasId === null) return;
+    const sel = selectedLectures.find(l => l.catalog.unibas_id === unibasId);
+    if (sel) {
+        sel.calendarHidden = !sel.calendarHidden;
         persistCurrent();
     }
 }

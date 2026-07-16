@@ -68,7 +68,7 @@
                                         {sel.catalog.type_label}
                                     </span>
                                 {/if}
-                                <p class="text-sm font-medium text-slate-800 truncate">{sel.catalog.title}</p>
+                                <p class="text-sm font-medium text-slate-800 truncate" title={sel.catalog.title}>{sel.catalog.title}</p>
                             </div>
                             {#if sel.catalog.course_number}
                                 <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>

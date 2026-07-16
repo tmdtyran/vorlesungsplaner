@@ -1,7 +1,7 @@
 <script lang="ts">
     import { activeSemester } from '$lib/stores/semester.svelte';
     import { nav } from '$lib/stores/navigation.svelte';
-    import { addLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
+    import { addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import type { CatalogEntry, FullLectureDetails, LectureDetail } from '$lib/types/lecture';
 
@@ -71,6 +71,10 @@
 
     function handleAddToSelection() {
         if (catalogEntry) addLecture(catalogEntry, lightDetail);
+    }
+
+    function handleRemoveFromSelection() {
+        if (full) removeLecture(full.unibasId);
     }
 
     async function loadByUnibasId(unibasId: number) {
@@ -150,6 +154,13 @@
 
 <div class="flex h-full">
 <div class="flex-1 flex flex-col min-w-0">
+
+{#snippet paragraphs(text: string)}
+    {#each text.split(/\n{2,}/) as para}
+        <p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed mb-2 last:mb-0">{para}</p>
+    {/each}
+{/snippet}
+
     <!-- Course number input -->
     <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Kursnummer</label>
@@ -185,15 +196,20 @@
                 {/if}
             </span>
             <button
-                onclick={handleAddToSelection}
-                disabled={!catalogEntry || isSelected(full.unibasId)}
-                class="ml-auto shrink-0 flex h-8 w-8 items-center justify-center rounded-full transition-colors
+                onclick={isSelected(full.unibasId) ? handleRemoveFromSelection : handleAddToSelection}
+                disabled={!isSelected(full.unibasId) && !catalogEntry}
+                class="group ml-auto shrink-0 flex h-8 w-8 items-center justify-center rounded-full transition-colors
                     {isSelected(full.unibasId)
-                        ? 'bg-emerald-100 text-emerald-600 cursor-default'
+                        ? 'bg-emerald-100 text-emerald-600 hover:bg-red-100 hover:text-red-600'
                         : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed'}"
-                title={isSelected(full.unibasId) ? 'Bereits in Meine Auswahl' : 'Zu Meine Auswahl hinzufügen'}
+                title={isSelected(full.unibasId) ? 'Aus Meine Auswahl entfernen' : 'Zu Meine Auswahl hinzufügen'}
             >
-                {isSelected(full.unibasId) ? '✓' : '+'}
+                {#if isSelected(full.unibasId)}
+                    <span class="group-hover:hidden">✓</span>
+                    <span class="hidden group-hover:inline">−</span>
+                {:else}
+                    +
+                {/if}
             </button>
         {/if}
     </div>
@@ -241,13 +257,13 @@
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-600">{full.description.lecturers}</p></div>
                     {/if}
                     {#if full.description.content}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Inhalt</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.content}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Inhalt</span>{@render paragraphs(full.description.content)}</div>
                     {/if}
                     {#if full.description.learningObjectives}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Lernziele</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.learningObjectives}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Lernziele</span>{@render paragraphs(full.description.learningObjectives)}</div>
                     {/if}
                     {#if full.description.remarks}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Bemerkungen</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.description.remarks}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Bemerkungen</span>{@render paragraphs(full.description.remarks)}</div>
                     {/if}
                     {#if !full.description.content && !full.description.learningObjectives && !full.description.remarks}
                         <p class="text-sm text-slate-400">Keine Beschreibung vorhanden.</p>
@@ -267,10 +283,10 @@
             {:else if activeSubTab === 'admission'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.admissionRequirements.requirements}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Teilnahmevoraussetzungen</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.admissionRequirements.requirements}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Teilnahmevoraussetzungen</span>{@render paragraphs(full.admissionRequirements.requirements)}</div>
                     {/if}
                     {#if full.admissionRequirements.registration}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anmeldung zur Lehrveranstaltung</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.admissionRequirements.registration}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anmeldung zur Lehrveranstaltung</span>{@render paragraphs(full.admissionRequirements.registration)}</div>
                     {/if}
                     {#if full.admissionRequirements.language}
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Unterrichtssprache</span><p class="text-sm text-slate-600">{full.admissionRequirements.language}</p></div>
@@ -343,7 +359,7 @@
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Prüfung</span><p class="text-sm text-slate-600">{full.assessment.format}</p></div>
                     {/if}
                     {#if full.assessment.details}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Hinweise zur Prüfung</span><p class="text-sm text-slate-600 whitespace-pre-line leading-relaxed">{full.assessment.details}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Hinweise zur Prüfung</span>{@render paragraphs(full.assessment.details)}</div>
                     {/if}
                     {#if full.assessment.registration}
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">An-/Abmeldung zur Prüfung</span><p class="text-sm text-slate-600">{full.assessment.registration}</p></div>

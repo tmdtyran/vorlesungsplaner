@@ -2,6 +2,7 @@
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
+    import { goToDetails } from '$lib/stores/navigation.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
 
@@ -312,6 +313,13 @@
                                     {lecture.credits} KP
                                 </span>
                             {/if}
+                            {#if lecture.unibas_id}
+                                <button
+                                    onclick={(e) => { e.stopPropagation(); goToDetails(lecture.unibas_id!); }}
+                                    class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 text-sm transition-opacity hover:bg-slate-100 hover:text-slate-700"
+                                    title="Details anzeigen"
+                                >→</button>
+                            {/if}
                             {#if !selected}
                                 <button
                                     onclick={(e) => handleAdd(lecture, e)}
@@ -380,6 +388,13 @@
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                                     {lecture.credits} KP
                                 </span>
+                            {/if}
+                            {#if isLeaf}
+                                <button
+                                    onclick={(e) => { e.stopPropagation(); goToDetails(lecture.unibas_id!); }}
+                                    class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 text-sm transition-opacity hover:bg-slate-100 hover:text-slate-700"
+                                    title="Details anzeigen"
+                                >→</button>
                             {/if}
                             {#if isLeaf && !selected}
                                 <button

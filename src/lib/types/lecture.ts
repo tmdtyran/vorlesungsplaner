@@ -70,6 +70,7 @@ export interface SelectedLecture {
     selectedModuleIndex: number;
     included: boolean;
     active: boolean;
+    calendarHidden: boolean;
 }
 
 export interface RecurringPatternRow {
@@ -101,7 +102,7 @@ export interface FullLectureDetails {
     };
     datesAndRooms: {
         pattern: RecurringPatternRow[];
-        sessions: DetailEvent[];
+        sessions: { date: string; startTime: string; endTime: string; room: string }[];
     };
     modules: string[];
     assessment: {

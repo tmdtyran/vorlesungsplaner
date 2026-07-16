@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { selectedLectures, toggleActive } from '$lib/stores/selectedLectures.svelte';
+    import { selectedLectures, toggleCalendarHidden } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
@@ -66,7 +66,7 @@
     let timesCache = $state<Map<number, TimeRow[]>>(new Map());
     let loadedIds = $state<Set<number>>(new Set());
 
-    const visibleLectures = $derived(selectedLectures.filter(s => s.active));
+    const visibleLectures = $derived(selectedLectures.filter(s => s.active && !s.calendarHidden));
 
     // Colors are tied to unibas_id (not list position), so removing or
     // deactivating one lecture never shifts the colors of the others.
@@ -497,7 +497,7 @@
             {#if visibleLectures.length === 0}
                 <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                     <span class="text-4xl">📅</span>
-                    <p class="text-sm">Alle ausgewählten Vorlesungen sind deaktiviert — aktiviere eine in der Legende unten oder in "Meine Auswahl".</p>
+                    <p class="text-sm">Keine Vorlesung im Kalender sichtbar — aktiviere eine in "Meine Auswahl" oder blende sie in der Legende unten wieder ein.</p>
                 </div>
             {:else}
             <div class="flex-1 overflow-auto">
@@ -577,16 +577,16 @@
             {/if}
 
             <div class="border-t border-slate-200 bg-slate-50 px-4 py-2.5 flex flex-wrap gap-x-4 gap-y-1.5">
-                {#each selectedLectures as sel (sel.catalog.unibas_id)}
+                {#each selectedLectures.filter(s => s.active) as sel (sel.catalog.unibas_id)}
                     {@const c = COLORS[colorIndexFor(sel.catalog.unibas_id)]}
                     <button
-                        onclick={() => toggleActive(sel.catalog.unibas_id)}
-                        class="flex items-center gap-1.5 text-xs transition-opacity {sel.active ? 'text-slate-700' : 'text-slate-400 opacity-50'}"
-                        title={sel.active ? 'Im Kalender ausblenden' : 'Im Kalender anzeigen'}
+                        onclick={() => toggleCalendarHidden(sel.catalog.unibas_id)}
+                        class="flex items-center gap-1.5 text-xs transition-opacity {!sel.calendarHidden ? 'text-slate-700' : 'text-slate-400 opacity-50'}"
+                        title={!sel.calendarHidden ? 'Im Kalender ausblenden' : 'Im Kalender anzeigen'}
                     >
                         <span class="h-3 w-3 rounded-sm border-2 flex items-center justify-center shrink-0
-                            {sel.active ? c.dot + ' border-transparent' : 'border-slate-300 bg-white'}">
-                            {#if sel.active}<span class="text-white text-[7px] leading-none">✓</span>{/if}
+                            {!sel.calendarHidden ? c.dot + ' border-transparent' : 'border-slate-300 bg-white'}">
+                            {#if !sel.calendarHidden}<span class="text-white text-[7px] leading-none">✓</span>{/if}
                         </span>
                         {#if sel.catalog.type_label}
                             <span class="rounded bg-slate-100 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">{sel.catalog.type_label}</span>
