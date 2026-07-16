@@ -83,9 +83,15 @@
         loading = false;
     }
 
-    let skipNextExpandReset = true;
     $effect(() => {
         lectureViewState.viewMode;
+        activeSemester.periodeId;
+        activeSemester.lang;
+        loadLectures();
+    });
+
+    let skipNextExpandReset = true;
+    $effect(() => {
         activeSemester.periodeId;
         activeSemester.lang;
         if (skipNextExpandReset) {
@@ -93,7 +99,6 @@
         } else {
             lectureViewState.expandedKeys = new Set();
         }
-        loadLectures();
     });
 
     async function fetchDetail(lecture: CatalogEntry): Promise<LectureDetail | null> {
@@ -231,6 +236,12 @@
     let scrollEl = $state<HTMLDivElement | null>(null);
     $effect(() => {
         if (!scrollEl) return;
+        // Re-run once the list actually has content (loading finished / data
+        // present) — before that the container has ~0 scrollable height, so
+        // an earlier assignment gets silently clamped back to 0 and would
+        // never be re-applied otherwise.
+        loading;
+        allLectures.length;
         scrollEl.scrollTop = lectureViewState.viewMode === 'hierarchy'
             ? lectureViewState.scrollTopHierarchy
             : lectureViewState.scrollTopFlat;
