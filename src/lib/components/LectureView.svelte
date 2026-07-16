@@ -21,12 +21,17 @@
     let viewportHeight = $state(600);
 
     function handleScroll(e: Event) {
-        lectureViewState.scrollTop = (e.currentTarget as HTMLDivElement).scrollTop;
+        const top = (e.currentTarget as HTMLDivElement).scrollTop;
+        if (lectureViewState.viewMode === 'hierarchy') {
+            lectureViewState.scrollTopHierarchy = top;
+        } else {
+            lectureViewState.scrollTopFlat = top;
+        }
     }
 
-    function virtualize<T>(items: T[], rowHeight: number) {
+    function virtualize<T>(items: T[], rowHeight: number, scrollPos: number) {
         const total = items.length;
-        const start = Math.max(0, Math.floor(lectureViewState.scrollTop / rowHeight) - OVERSCAN);
+        const start = Math.max(0, Math.floor(scrollPos / rowHeight) - OVERSCAN);
         const visibleCount = Math.ceil(viewportHeight / rowHeight) + OVERSCAN * 2;
         const end = Math.min(total, start + visibleCount);
         return {
@@ -214,29 +219,21 @@
         'Do': 'Donnerstag', 'Fr': 'Freitag', 'Sa': 'Samstag'
     };
 
-    const virtualFlat = $derived.by(() => virtualize(filteredLeft, ROW_HEIGHT_FLAT));
-    const virtualHierarchy = $derived.by(() => virtualize(hierarchyFlatList, ROW_HEIGHT_HIERARCHY));
+    const virtualFlat = $derived.by(() => virtualize(filteredLeft, ROW_HEIGHT_FLAT, lectureViewState.scrollTopFlat));
+    const virtualHierarchy = $derived.by(() => virtualize(hierarchyFlatList, ROW_HEIGHT_HIERARCHY, lectureViewState.scrollTopHierarchy));
 
-    // Switching mode, searching, or expanding/collapsing changes the total
-    // row count and heights, so a scroll position kept from before would
-    // point at the wrong rows — reset to the top when that happens. But on
-    // first mount (e.g. coming back to this tab) we want to keep/restore the
-    // previously stored scroll position, not reset it.
+    // Each mode keeps its own scroll position (scrollTopFlat / scrollTopHierarchy)
+    // in the shared lectureViewState store. This effect keeps the actual DOM
+    // scroll position in sync with whichever one is currently active — on
+    // mount, and whenever the user switches between list and hierarchy mode.
+    // It intentionally never resets scroll to 0 on search/expand changes;
+    // the previous position is kept.
     let scrollEl = $state<HTMLDivElement | null>(null);
-    let skipNextReset = true;
     $effect(() => {
-        lectureViewState.viewMode; lectureViewState.searchLeft; lectureViewState.expandedKeys;
-        if (skipNextReset) {
-            skipNextReset = false;
-            return;
-        }
-        lectureViewState.scrollTop = 0;
-        if (scrollEl) scrollEl.scrollTop = 0;
-    });
-
-    // Restore the stored scroll position once the scroll container exists.
-    $effect(() => {
-        if (scrollEl) scrollEl.scrollTop = lectureViewState.scrollTop;
+        if (!scrollEl) return;
+        scrollEl.scrollTop = lectureViewState.viewMode === 'hierarchy'
+            ? lectureViewState.scrollTopHierarchy
+            : lectureViewState.scrollTopFlat;
     });
 </script>
 

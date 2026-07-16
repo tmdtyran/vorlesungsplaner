@@ -8,5 +8,6 @@ export const lectureViewState = $state({
     viewMode: 'flat' as 'flat' | 'hierarchy',
     searchLeft: '',
     expandedKeys: new Set<number>(),
-    scrollTop: 0
+    scrollTopFlat: 0,
+    scrollTopHierarchy: 0
 });
