@@ -187,6 +187,11 @@ function initSchema(db: BunDatabase) {
         end_time TEXT,
         FOREIGN KEY (lecture_catalog_id) REFERENCES lecture_catalog(id) ON DELETE CASCADE
     );`);
+    // SCHEDULE_SUBQUERY (lectureRepository.ts) looks up rows by
+    // lecture_catalog_id for every single row returned from lecture_catalog
+    // — without this index that's a full table scan of lecture_times per
+    // catalog row, which dominates load time for the (large) hierarchy view.
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_lecture_times_catalog_id ON lecture_times(lecture_catalog_id);`);
 
     db.exec(`
     CREATE TABLE IF NOT EXISTS lecture_details (

@@ -5,6 +5,36 @@
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
 
+    // --- Virtualization ---------------------------------------------------
+    // Both lists can have thousands of rows (esp. hierarchy mode, which
+    // returns every catalog node). Rendering every row as a real DOM element
+    // is the main cost once the reactivity/query issues are fixed, so only
+    // the rows within (and just around) the visible scroll area are
+    // rendered; the rest is represented by two spacer divs that keep the
+    // scrollbar/scroll position correct.
+    const ROW_HEIGHT_FLAT = 88;
+    const ROW_HEIGHT_HIERARCHY = 60;
+    const OVERSCAN = 8;
+
+    let scrollTop = $state(0);
+    let viewportHeight = $state(600);
+
+    function handleScroll(e: Event) {
+        scrollTop = (e.currentTarget as HTMLDivElement).scrollTop;
+    }
+
+    function virtualize<T>(items: T[], rowHeight: number) {
+        const total = items.length;
+        const start = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
+        const visibleCount = Math.ceil(viewportHeight / rowHeight) + OVERSCAN * 2;
+        const end = Math.min(total, start + visibleCount);
+        return {
+            items: items.slice(start, end),
+            topPadding: start * rowHeight,
+            bottomPadding: (total - end) * rowHeight
+        };
+    }
+
     let allLectures = $state<CatalogEntry[]>([]);
     let viewMode = $state<'flat' | 'hierarchy'>('flat');
     let searchLeft = $state('');
@@ -28,11 +58,28 @@
         return `periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`;
     }
 
+    // Client-side cache mirrors the server-side one: once a (mode, semester)
+    // combination has been fetched, switching back to it (e.g. flat ->
+    // hierarchy -> flat) shows the cached data immediately instead of
+    // re-fetching and re-flashing the loading state.
+    const lectureCache = new Map<string, CatalogEntry[]>();
+
     async function loadLectures() {
-        loading = true;
         const mode = viewMode === 'hierarchy' ? 'hierarchy' : 'flat';
+        const cacheKey = `${mode}:${activeSemester.periodeId}:${activeSemester.lang}`;
+
+        const cached = lectureCache.get(cacheKey);
+        if (cached) {
+            allLectures = cached;
+            loading = false;
+            return;
+        }
+
+        loading = true;
         const res = await fetch(`/api/lectures?mode=${mode}&${semesterParams()}`);
-        allLectures = await res.json();
+        const data: CatalogEntry[] = await res.json();
+        lectureCache.set(cacheKey, data);
+        allLectures = data;
         loading = false;
     }
 
@@ -152,7 +199,7 @@
         return out;
     }
 
-    const hierarchyFlatList = $derived(() => {
+    const hierarchyFlatList = $derived.by(() => {
         if (viewMode !== 'hierarchy') return [];
         const roots = buildTree(allLectures);
         const filtered = filterTree(roots, searchLeft);
@@ -166,6 +213,20 @@
         'Mo': 'Montag', 'Di': 'Dienstag', 'Mi': 'Mittwoch',
         'Do': 'Donnerstag', 'Fr': 'Freitag', 'Sa': 'Samstag'
     };
+
+    const virtualFlat = $derived.by(() => virtualize(filteredLeft, ROW_HEIGHT_FLAT));
+    const virtualHierarchy = $derived.by(() => virtualize(hierarchyFlatList, ROW_HEIGHT_HIERARCHY));
+
+    // Switching mode, searching, or expanding/collapsing changes the total
+    // row count and heights, so a scroll position kept from before would
+    // point at the wrong rows. Reset to the top whenever the underlying
+    // list changes.
+    let scrollEl = $state<HTMLDivElement | null>(null);
+    $effect(() => {
+        viewMode; searchLeft; expandedKeys;
+        scrollTop = 0;
+        if (scrollEl) scrollEl.scrollTop = 0;
+    });
 </script>
 
 <div class="flex h-full flex-col gap-0">
@@ -195,7 +256,7 @@
             <span class="text-xs text-slate-400">Laden…</span>
         {:else}
             <span class="text-xs text-slate-400">
-                {viewMode === 'hierarchy' ? hierarchyFlatList().length : filteredLeft.length} Vorlesungen
+                {viewMode === 'hierarchy' ? hierarchyFlatList.length : filteredLeft.length} Vorlesungen
             </span>
         {/if}
     </div>
@@ -204,20 +265,29 @@
     <div class="flex flex-1 min-h-0">
         <!-- Left scroll box: All lectures -->
         <div class="flex flex-col flex-1 min-w-0 border-r border-slate-200">
-            <div class="flex-1 overflow-y-auto">
+            <div
+                bind:this={scrollEl}
+                bind:clientHeight={viewportHeight}
+                onscroll={handleScroll}
+                class="flex-1 overflow-y-auto"
+            >
                 {#if loading}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Lädt…</div>
-                {:else if viewMode === 'hierarchy' ? hierarchyFlatList().length === 0 : filteredLeft.length === 0}
+                {:else if viewMode === 'hierarchy' ? hierarchyFlatList.length === 0 : filteredLeft.length === 0}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
                 {:else if viewMode === 'flat'}
-                    {#each filteredLeft as lecture (lecture.id)}
+                    {#if virtualFlat.topPadding > 0}
+                        <div style="height: {virtualFlat.topPadding}px"></div>
+                    {/if}
+                    {#each virtualFlat.items as lecture (lecture.id)}
                         {@const selected = isSelected(lecture.unibas_id)}
                         <div
                             role="button"
                             tabindex="0"
                             onclick={() => selectLecture(lecture, false)}
                             onkeydown={(e) => e.key === 'Enter' && selectLecture(lecture, false)}
-                            class="group relative flex w-full cursor-pointer items-center gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-indigo-50"
+                            style="height: {ROW_HEIGHT_FLAT}px"
+                            class="group relative flex w-full cursor-pointer items-center gap-3 overflow-hidden border-b border-slate-100 px-4 text-left transition-colors hover:bg-indigo-50"
                         >
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2">
@@ -260,9 +330,15 @@
                             {/if}
                         </div>
                     {/each}
+                    {#if virtualFlat.bottomPadding > 0}
+                        <div style="height: {virtualFlat.bottomPadding}px"></div>
+                    {/if}
                 {:else}
                     <!-- Hierarchy view: real tree, flattened via depth-first traversal -->
-                    {#each hierarchyFlatList() as lecture (lecture.hierarchy_key ?? lecture.id)}
+                    {#if virtualHierarchy.topPadding > 0}
+                        <div style="height: {virtualHierarchy.topPadding}px"></div>
+                    {/if}
+                    {#each virtualHierarchy.items as lecture (lecture.hierarchy_key ?? lecture.id)}
                         {@const indent = (lecture.depth ?? 0) * 16}
                         {@const isLeaf = lecture.unibas_id !== null}
                         {@const selected = isSelected(lecture.unibas_id)}
@@ -272,9 +348,9 @@
                             tabindex="0"
                             onclick={(e) => isLeaf ? selectLecture(lecture, false) : (lecture.hasChildren && toggleExpand(key, e))}
                             onkeydown={(e) => { if (e.key === 'Enter') { isLeaf ? selectLecture(lecture, false) : (lecture.hasChildren && toggleExpand(key, e)); } }}
-                            class="group relative flex w-full items-center gap-3 border-b border-slate-100 py-2.5 pr-4 text-left transition-colors
+                            class="group relative flex w-full items-center gap-3 overflow-hidden border-b border-slate-100 pr-4 text-left transition-colors
                                 {isLeaf ? 'hover:bg-indigo-50 cursor-pointer' : 'cursor-pointer bg-slate-50 hover:bg-slate-100'}"
-                            style="padding-left: {16 + indent}px"
+                            style="padding-left: {16 + indent}px; height: {ROW_HEIGHT_HIERARCHY}px"
                         >
                             {#if !isLeaf}
                                 <span
@@ -322,6 +398,9 @@
                             {/if}
                         </div>
                     {/each}
+                    {#if virtualHierarchy.bottomPadding > 0}
+                        <div style="height: {virtualHierarchy.bottomPadding}px"></div>
+                    {/if}
                 {/if}
             </div>
         </div>
