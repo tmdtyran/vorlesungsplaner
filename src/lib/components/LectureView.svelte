@@ -3,7 +3,7 @@
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import { goToDetails } from '$lib/stores/navigation.svelte';
-    import { lectureViewState } from '$lib/stores/lectureViewState.svelte';
+    import { lectureViewState, lectureCache } from '$lib/stores/lectureViewState.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
 
@@ -58,17 +58,11 @@
         return `periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`;
     }
 
-    // Client-side cache mirrors the server-side one: once a (mode, semester)
-    // combination has been fetched, switching back to it (e.g. flat ->
-    // hierarchy -> flat) shows the cached data immediately instead of
-    // re-fetching and re-flashing the loading state.
-    const lectureCache = new Map<string, CatalogEntry[]>();
-
     async function loadLectures() {
         const mode = lectureViewState.viewMode === 'hierarchy' ? 'hierarchy' : 'flat';
         const cacheKey = `${mode}:${activeSemester.periodeId}:${activeSemester.lang}`;
 
-        const cached = lectureCache.get(cacheKey);
+        const cached = lectureCache.get(cacheKey) as CatalogEntry[] | undefined;
         if (cached) {
             allLectures = cached;
             loading = false;
