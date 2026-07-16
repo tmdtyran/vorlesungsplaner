@@ -2,6 +2,7 @@ import { json } from "@sveltejs/kit";
 import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
 import { startJob, getJob, jobKey } from "$lib/server/importJobs";
+import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
 const BASE = "https://vorlesungsverzeichnis.unibas.ch";
 
@@ -256,6 +257,8 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
             catalog_node_count: String(nodeCount),
             catalog_lecture_count: String(lectureCount)
         });
+
+        invalidateLecturesCache(periodeId, lang);
     } catch (statsErr: any) {
         // Data is safe (committed above) — only the reporting step failed.
         // Log full diagnostics and still mark the import as done so the
@@ -268,6 +271,8 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
                 catalog_imported_at: new Date().toISOString(),
                 catalog_node_count: String(nodeCount)
             });
+
+            invalidateLecturesCache(periodeId, lang);
         } catch { /* even the minimal meta write failed — nothing more we can do */ }
     }
 }
