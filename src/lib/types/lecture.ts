@@ -92,6 +92,8 @@ export interface FullLectureDetails {
         lecturers: string | null;
         content: string | null;
         learningObjectives: string | null;
+        literature: string | null;
+        weblink: string | null;
         remarks: string | null;
     };
     admissionRequirements: {

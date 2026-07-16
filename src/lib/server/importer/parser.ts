@@ -316,6 +316,8 @@ export interface FullLectureDetails {
         lecturers: string | null;
         content: string | null;      // "Inhalt"
         learningObjectives: string | null; // "Lernziele"
+        literature: string | null;   // "Literatur"
+        weblink: string | null;      // "Weblink"
         remarks: string | null;      // "Bemerkungen"
     };
     admissionRequirements: {
@@ -376,6 +378,8 @@ export function parseFullLectureDetails(html: string, unibasId: number): FullLec
             lecturers: getField("Dozierende", "Lecturers"),
             content: getField("Inhalt", "Content"),
             learningObjectives: getField("Lernziele", "Learning objectives"),
+            literature: getField("Literatur", "Literature"),
+            weblink: getField("Weblink"),
             remarks: getField("Bemerkungen", "Remarks")
         },
         admissionRequirements: {

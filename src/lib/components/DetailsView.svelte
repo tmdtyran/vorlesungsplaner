@@ -254,7 +254,7 @@
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Angebotsmuster</span><p class="text-sm text-slate-600">{full.description.pattern}</p></div>
                     {/if}
                     {#if full.description.lecturers}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-600">{full.description.lecturers}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-600 whitespace-pre-line">{full.description.lecturers}</p></div>
                     {/if}
                     {#if full.description.content}
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Inhalt</span>{@render paragraphs(full.description.content)}</div>
@@ -262,10 +262,19 @@
                     {#if full.description.learningObjectives}
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Lernziele</span>{@render paragraphs(full.description.learningObjectives)}</div>
                     {/if}
+                    {#if full.description.literature}
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Literatur</span>{@render paragraphs(full.description.literature)}</div>
+                    {/if}
+                    {#if full.description.weblink}
+                        <div>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Weblink</span>
+                            <a href={full.description.weblink} target="_blank" rel="noopener noreferrer" class="text-sm text-indigo-600 hover:underline break-all">{full.description.weblink}</a>
+                        </div>
+                    {/if}
                     {#if full.description.remarks}
                         <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Bemerkungen</span>{@render paragraphs(full.description.remarks)}</div>
                     {/if}
-                    {#if !full.description.content && !full.description.learningObjectives && !full.description.remarks}
+                    {#if !full.description.content && !full.description.learningObjectives && !full.description.literature && !full.description.weblink && !full.description.remarks}
                         <p class="text-sm text-slate-400">Keine Beschreibung vorhanden.</p>
                     {/if}
                     {#if full.debugRawHtmlSnippet}

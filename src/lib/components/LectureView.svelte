@@ -3,6 +3,7 @@
     import { selectedLectures, addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import { goToDetails } from '$lib/stores/navigation.svelte';
+    import { lectureViewState } from '$lib/stores/lectureViewState.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
 
@@ -17,16 +18,15 @@
     const ROW_HEIGHT_HIERARCHY = 60;
     const OVERSCAN = 8;
 
-    let scrollTop = $state(0);
     let viewportHeight = $state(600);
 
     function handleScroll(e: Event) {
-        scrollTop = (e.currentTarget as HTMLDivElement).scrollTop;
+        lectureViewState.scrollTop = (e.currentTarget as HTMLDivElement).scrollTop;
     }
 
     function virtualize<T>(items: T[], rowHeight: number) {
         const total = items.length;
-        const start = Math.max(0, Math.floor(scrollTop / rowHeight) - OVERSCAN);
+        const start = Math.max(0, Math.floor(lectureViewState.scrollTop / rowHeight) - OVERSCAN);
         const visibleCount = Math.ceil(viewportHeight / rowHeight) + OVERSCAN * 2;
         const end = Math.min(total, start + visibleCount);
         return {
@@ -37,22 +37,16 @@
     }
 
     let allLectures = $state<CatalogEntry[]>([]);
-    let viewMode = $state<'flat' | 'hierarchy'>('flat');
-    let searchLeft = $state('');
     let selectedDetail = $state<LectureDetail | null>(null);
     let selectedFromRight = $state(false);
     let loading = $state(false);
 
-    // Hierarchy view: which folder nodes are expanded. Empty by default =
-    // everything collapsed, only root-level nodes visible until expanded.
-    let expandedKeys = $state<Set<number>>(new Set());
-
     function toggleExpand(key: number, e: MouseEvent) {
         e.stopPropagation();
-        const next = new Set(expandedKeys);
+        const next = new Set(lectureViewState.expandedKeys);
         if (next.has(key)) next.delete(key);
         else next.add(key);
-        expandedKeys = next;
+        lectureViewState.expandedKeys = next;
     }
 
     function semesterParams(): string {
@@ -66,7 +60,7 @@
     const lectureCache = new Map<string, CatalogEntry[]>();
 
     async function loadLectures() {
-        const mode = viewMode === 'hierarchy' ? 'hierarchy' : 'flat';
+        const mode = lectureViewState.viewMode === 'hierarchy' ? 'hierarchy' : 'flat';
         const cacheKey = `${mode}:${activeSemester.periodeId}:${activeSemester.lang}`;
 
         const cached = lectureCache.get(cacheKey);
@@ -84,11 +78,16 @@
         loading = false;
     }
 
+    let skipNextExpandReset = true;
     $effect(() => {
-        viewMode;
+        lectureViewState.viewMode;
         activeSemester.periodeId;
         activeSemester.lang;
-        expandedKeys = new Set();
+        if (skipNextExpandReset) {
+            skipNextExpandReset = false;
+        } else {
+            lectureViewState.expandedKeys = new Set();
+        }
         loadLectures();
     });
 
@@ -122,10 +121,10 @@
 
     const filteredLeft = $derived(
         allLectures
-            .filter(l => l.unibas_id !== null || viewMode === 'hierarchy')
+            .filter(l => l.unibas_id !== null || lectureViewState.viewMode === 'hierarchy')
             .filter(l => {
-                if (!searchLeft) return true;
-                const q = searchLeft.toLowerCase();
+                if (!lectureViewState.searchLeft) return true;
+                const q = lectureViewState.searchLeft.toLowerCase();
                 return (
                     l.title.toLowerCase().includes(q) ||
                     (l.course_number ?? '').toLowerCase().includes(q) ||
@@ -201,13 +200,13 @@
     }
 
     const hierarchyFlatList = $derived.by(() => {
-        if (viewMode !== 'hierarchy') return [];
+        if (lectureViewState.viewMode !== 'hierarchy') return [];
         const roots = buildTree(allLectures);
-        const filtered = filterTree(roots, searchLeft);
+        const filtered = filterTree(roots, lectureViewState.searchLeft);
         // While actively searching, auto-expand everything so matches under
         // collapsed folders are visible; otherwise respect manual state.
-        const forceExpandAll = searchLeft.trim().length > 0;
-        return flattenTree(filtered, expandedKeys, forceExpandAll);
+        const forceExpandAll = lectureViewState.searchLeft.trim().length > 0;
+        return flattenTree(filtered, lectureViewState.expandedKeys, forceExpandAll);
     });
 
     const weekdayMap: Record<string, string> = {
@@ -220,13 +219,24 @@
 
     // Switching mode, searching, or expanding/collapsing changes the total
     // row count and heights, so a scroll position kept from before would
-    // point at the wrong rows. Reset to the top whenever the underlying
-    // list changes.
+    // point at the wrong rows — reset to the top when that happens. But on
+    // first mount (e.g. coming back to this tab) we want to keep/restore the
+    // previously stored scroll position, not reset it.
     let scrollEl = $state<HTMLDivElement | null>(null);
+    let skipNextReset = true;
     $effect(() => {
-        viewMode; searchLeft; expandedKeys;
-        scrollTop = 0;
+        lectureViewState.viewMode; lectureViewState.searchLeft; lectureViewState.expandedKeys;
+        if (skipNextReset) {
+            skipNextReset = false;
+            return;
+        }
+        lectureViewState.scrollTop = 0;
         if (scrollEl) scrollEl.scrollTop = 0;
+    });
+
+    // Restore the stored scroll position once the scroll container exists.
+    $effect(() => {
+        if (scrollEl) scrollEl.scrollTop = lectureViewState.scrollTop;
     });
 </script>
 
@@ -235,20 +245,20 @@
     <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-white">
         <div class="flex rounded-lg border border-slate-200 overflow-hidden">
             <button
-                onclick={() => viewMode = 'flat'}
+                onclick={() => lectureViewState.viewMode = 'flat'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
-                    {viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+                    {lectureViewState.viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
             >≡ Liste</button>
             <button
-                onclick={() => viewMode = 'hierarchy'}
+                onclick={() => lectureViewState.viewMode = 'hierarchy'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
-                    {viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+                    {lectureViewState.viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
             >⊞ Hierarchie</button>
         </div>
         <div class="relative flex-1 max-w-sm">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
-                bind:value={searchLeft}
+                bind:value={lectureViewState.searchLeft}
                 placeholder="Vorlesungen suchen..."
                 class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
@@ -257,7 +267,7 @@
             <span class="text-xs text-slate-400">Laden…</span>
         {:else}
             <span class="text-xs text-slate-400">
-                {viewMode === 'hierarchy' ? hierarchyFlatList.length : filteredLeft.length} Vorlesungen
+                {lectureViewState.viewMode === 'hierarchy' ? hierarchyFlatList.length : filteredLeft.length} Vorlesungen
             </span>
         {/if}
     </div>
@@ -274,9 +284,9 @@
             >
                 {#if loading}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Lädt…</div>
-                {:else if viewMode === 'hierarchy' ? hierarchyFlatList.length === 0 : filteredLeft.length === 0}
+                {:else if lectureViewState.viewMode === 'hierarchy' ? hierarchyFlatList.length === 0 : filteredLeft.length === 0}
                     <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
-                {:else if viewMode === 'flat'}
+                {:else if lectureViewState.viewMode === 'flat'}
                     {#if virtualFlat.topPadding > 0}
                         <div style="height: {virtualFlat.topPadding}px"></div>
                     {/if}
