@@ -213,6 +213,11 @@
         return flattenTree(filtered, lectureViewState.expandedKeys, forceExpandAll);
     });
 
+    // The hierarchy list includes folder/group nodes (needed for the tree
+    // structure itself) — the visible count should only reflect actual
+    // lectures, not the collapsible folders around them.
+    const hierarchyLectureCount = $derived(hierarchyFlatList.filter(l => l.unibas_id !== null).length);
+
     const weekdayMap: Record<string, string> = {
         'Mo': 'Montag', 'Di': 'Dienstag', 'Mi': 'Mittwoch',
         'Do': 'Donnerstag', 'Fr': 'Freitag', 'Sa': 'Samstag'
@@ -269,7 +274,7 @@
             <span class="text-xs text-slate-400">Laden…</span>
         {:else}
             <span class="text-xs text-slate-400">
-                {lectureViewState.viewMode === 'hierarchy' ? hierarchyFlatList.length : filteredLeft.length} Vorlesungen
+                {lectureViewState.viewMode === 'hierarchy' ? hierarchyLectureCount : filteredLeft.length} Vorlesungen
             </span>
         {/if}
     </div>

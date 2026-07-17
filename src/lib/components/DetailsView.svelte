@@ -157,8 +157,7 @@
     });
 </script>
 
-<div class="flex h-full">
-<div class="flex-1 flex flex-col min-w-0">
+<div class="flex h-full flex-col">
 
 {#snippet paragraphs(text: string)}
     {#each text.split(/\n{2,}/) as para}
@@ -225,6 +224,9 @@
             </div>
         {/if}
     </div>
+
+    <div class="flex flex-1 overflow-hidden">
+    <div class="flex-1 flex flex-col min-w-0">
 
     {#if loading}
         <div class="flex flex-1 items-center justify-center text-slate-400 text-sm">Lädt…</div>
@@ -404,7 +406,8 @@
             {/if}
         </div>
     {/if}
-</div>
+    </div>
 
-<SelectedLecturesPanel onSelect={handleSelectFromPanel} />
+    <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
+    </div>
 </div>

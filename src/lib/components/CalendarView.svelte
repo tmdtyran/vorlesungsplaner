@@ -454,39 +454,41 @@
     }
 </script>
 
-<div class="flex h-full overflow-hidden bg-white">
-    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <div class="flex items-center gap-3 border-b border-slate-200 px-4 py-2.5 flex-wrap">
-            <div class="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
-                <button
-                    onclick={() => viewMode = 'typical'}
-                    class="px-3 py-1.5 text-xs font-medium transition-colors
-                        {viewMode === 'typical' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-                >Typische Woche</button>
-                <button
-                    onclick={() => viewMode = 'specific'}
-                    class="px-3 py-1.5 text-xs font-medium transition-colors
-                        {viewMode === 'specific' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-                >Spezifische Woche</button>
-            </div>
-
-            {#if viewMode === 'specific'}
-                <div class="flex items-center gap-2 shrink-0">
-                    <button onclick={goToPrevWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">‹</button>
-                    <span class="text-xs font-medium text-slate-700 whitespace-nowrap">{weekRangeLabel}</span>
-                    <button onclick={goToNextWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">›</button>
-                    <button onclick={goToCurrentWeek} class="text-xs text-indigo-600 hover:underline whitespace-nowrap">Heute</button>
-                </div>
-            {/if}
-
+<div class="flex h-full flex-col overflow-hidden bg-white">
+    <div class="flex items-center gap-3 border-b border-slate-200 px-4 py-2.5 flex-wrap">
+        <div class="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
             <button
-                onclick={exportICS}
-                disabled={visibleLectures.length === 0}
-                class="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-                📤 ICS exportieren
-            </button>
+                onclick={() => viewMode = 'typical'}
+                class="px-3 py-1.5 text-xs font-medium transition-colors
+                    {viewMode === 'typical' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+            >Typische Woche</button>
+            <button
+                onclick={() => viewMode = 'specific'}
+                class="px-3 py-1.5 text-xs font-medium transition-colors
+                    {viewMode === 'specific' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
+            >Spezifische Woche</button>
         </div>
+
+        {#if viewMode === 'specific'}
+            <div class="flex items-center gap-2 shrink-0">
+                <button onclick={goToPrevWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">‹</button>
+                <span class="text-xs font-medium text-slate-700 whitespace-nowrap">{weekRangeLabel}</span>
+                <button onclick={goToNextWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">›</button>
+                <button onclick={goToCurrentWeek} class="text-xs text-indigo-600 hover:underline whitespace-nowrap">Heute</button>
+            </div>
+        {/if}
+
+        <button
+            onclick={exportICS}
+            disabled={visibleLectures.length === 0}
+            class="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+            📤 ICS exportieren
+        </button>
+    </div>
+
+    <div class="flex flex-1 overflow-hidden">
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {#if selectedLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
@@ -601,4 +603,5 @@
     </div>
 
     <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
+    </div>
 </div>

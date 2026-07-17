@@ -13,6 +13,7 @@ export interface ParsedLecture {
     assessmentDetails: string | null;
     content: string | null;
     events: ParsedEvent[];
+    recurringPattern: { frequency: string; weekday: string; time: string; room: string }[];
 }
 
 export interface ParsedEvent {
@@ -274,6 +275,7 @@ export function parseLectureDetails(html: string, unibasId: number): ParsedLectu
     const { courseNumber, typeLabel, title } = extractHeadingInfo($, unibasId);
     const fields = extractFieldsFromHtml($);
     const events = extractSessionEvents($);
+    const recurringPattern = extractRecurringPattern($);
 
     const getField = (...labels: string[]): string | null => {
         for (const l of labels) {
@@ -295,7 +297,8 @@ export function parseLectureDetails(html: string, unibasId: number): ParsedLectu
         assessmentFormat: getField("Prüfung", "Assessment format"),
         assessmentDetails: getField("Hinweise zur Prüfung", "Assessment details"),
         content: getField("Inhalt", "Content"),
-        events
+        events,
+        recurringPattern
     };
 }
 

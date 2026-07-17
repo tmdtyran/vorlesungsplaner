@@ -1,7 +1,6 @@
 import { json } from "@sveltejs/kit";
 import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
-import { fetchLectureHtml } from "$lib/server/importer/unibas";
 import { startJob, getJob, jobKey } from "$lib/server/importJobs";
 import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
@@ -289,11 +288,15 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
 
     log(`${rows.length} eindeutige Vorlesungen in data/${periodeId}_${lang}.db`);
 
+    const langPath = lang === "de" ? "de/vorlesungsverzeichnis" : "en/course-directory";
     let success = 0, failed = 0;
 
     for (const row of rows) {
         try {
-            const html = await fetchLectureHtml(row.unibas_id, lang === "de" ? "de" : "en");
+            const html = await fetch(
+                `${BASE}/${langPath}?id=${row.unibas_id}`,
+                { headers: { "User-Agent": "Mozilla/5.0" } }
+            ).then(r => r.text());
 
             const parsed = parseLectureDetails(html, row.unibas_id);
 
@@ -329,18 +332,59 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
                     VALUES (?,?,?,?,?)
                 `).run(detail.id, ev.date, ev.startTime, ev.endTime, ev.room);
             }
+
+            // Backfill lecture_times/schedule from the detail page's own
+            // recurring-pattern table when the catalogue import didn't
+            // already capture a weekly slot for this lecture (e.g. some
+            // titles don't embed the schedule the way parseLeafTitle
+            // expects, even though the detail page clearly has one — the
+            // Details tab already showed this via a live re-parse; this
+            // makes the fast catalog list reflect it too, without needing
+            // a per-row live parse on every read).
+            if (parsed.recurringPattern.length > 0) {
+                const catalogRows = db.prepare(
+                    `SELECT id FROM lecture_catalog WHERE unibas_id = ?`
+                ).all(row.unibas_id) as { id: number }[];
+
+                for (const catalogRow of catalogRows) {
+                    const existingTimes = db.prepare(
+                        `SELECT COUNT(*) as n FROM lecture_times WHERE lecture_catalog_id = ?`
+                    ).get(catalogRow.id) as { n: number };
+                    if (existingTimes.n > 0) continue; // catalogue import already has real data
+
+                    const slots: { frequency: string; weekday: string; start: string; end: string }[] = [];
+                    for (const p of parsed.recurringPattern) {
+                        const timeMatch = p.time.match(/(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/);
+                        if (!timeMatch) continue;
+                        slots.push({
+                            frequency: p.frequency,
+                            weekday: p.weekday,
+                            start: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
+                            end: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`
+                        });
+                    }
+                    if (slots.length === 0) continue;
+
+                    for (const slot of slots) {
+                        db.prepare(`
+                            INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
+                            VALUES (?, ?, ?, ?, ?)
+                        `).run(catalogRow.id, slot.frequency, slot.weekday, slot.start, slot.end);
+                    }
+
+                    const scheduleText = slots
+                        .map(s => `${s.frequency} ${s.weekday} ${s.start}-${s.end}`.trim())
+                        .join(' | ');
+                    db.prepare(`UPDATE lecture_catalog SET schedule = ? WHERE id = ?`).run(scheduleText, catalogRow.id);
+                }
+            }
+
             success++;
             if (success % 10 === 0 || failed > 0) log(`✓ ${success}/${rows.length} — ${parsed.title}`);
         } catch (err: any) {
             failed++;
             log(`✗ ${row.unibas_id}: ${err?.message ?? err}`);
         }
-
-        // A small pause between requests — fetchLectureHtml already backs
-        // off and retries individual rate-limit/block responses, but
-        // spacing requests out to begin with makes triggering the server's
-        // "abusive connection counts" block in the first place less likely.
-        await new Promise(r => setTimeout(r, 150));
     }
     log(`Fertig: ${success} erfolgreich, ${failed} fehlgeschlagen.`);
 
