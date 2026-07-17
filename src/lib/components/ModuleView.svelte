@@ -108,7 +108,7 @@
                                 <td class="px-4 py-3">
                                     <select
                                         bind:value={sel.selectedModuleIndex}
-                                        class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+                                        class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 truncate text-xs focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
                                         disabled={!sel.included}
                                     >
                                         {#each modules as mod, mi}
