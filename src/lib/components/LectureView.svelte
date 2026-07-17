@@ -316,7 +316,7 @@
                                             {lecture.type_label}
                                         </span>
                                     {/if}
-                                    <p class="text-sm font-medium text-slate-800 truncate">{lecture.title}</p>
+                                    <p class="text-sm font-medium text-slate-800 truncate" title={lecture.title}>{lecture.title}</p>
                                 </div>
                                 {#if lecture.course_number || lecture.lecturer}
                                     <p class="text-xs text-slate-500 truncate">
@@ -392,7 +392,7 @@
                                             {lecture.type_label}
                                         </span>
                                     {/if}
-                                    <p class="text-sm truncate {isLeaf ? 'font-medium text-slate-800' : 'font-semibold text-slate-700'}">{lecture.title}</p>
+                                    <p class="text-sm truncate {isLeaf ? 'font-medium text-slate-800' : 'font-semibold text-slate-700'}" title={lecture.title}>{lecture.title}</p>
                                 </div>
                                 {#if isLeaf && (lecture.course_number || lecture.lecturer)}
                                     <p class="text-xs text-slate-500 truncate">
@@ -444,6 +444,6 @@
     </div>
 
     <!-- Detail panel (shared component) -->
-    <LectureMiniDetail detail={selectedDetail} typeLabel={selectedCatalog?.type_label ?? null} onClose={() => { selectedDetail = null; selectedCatalog = null; }} />
+    <LectureMiniDetail detail={selectedDetail} typeLabel={selectedCatalog?.type_label ?? null} credits={selectedCatalog?.credits ?? null} onClose={() => { selectedDetail = null; selectedCatalog = null; }} />
 
 </div>

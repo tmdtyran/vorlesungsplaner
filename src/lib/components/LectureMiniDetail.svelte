@@ -5,9 +5,10 @@
     interface Props {
         detail: LectureDetail | null;
         typeLabel?: string | null;
+        credits?: number | null;
         onClose: () => void;
     }
-    let { detail, typeLabel = null, onClose }: Props = $props();
+    let { detail, typeLabel = null, credits = null, onClose }: Props = $props();
 </script>
 
 {#if detail}
@@ -21,6 +22,11 @@
                         </span>
                     {/if}
                     <h3 class="text-base font-semibold text-slate-900 truncate" title={detail.title}>{detail.title}</h3>
+                    {#if credits}
+                        <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            {credits} KP
+                        </span>
+                    {/if}
                 </div>
                 {#if detail.course_number}
                     <p class="text-xs text-slate-500 mt-0.5">{detail.course_number}</p>

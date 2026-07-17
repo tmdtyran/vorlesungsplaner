@@ -82,6 +82,27 @@
         if (full) removeLecture(full.unibasId);
     }
 
+    let refreshing = $state(false);
+
+    async function handleRefresh() {
+        if (!full || refreshing) return;
+        refreshing = true;
+        try {
+            const res = await fetch(
+                `/api/lectures/${full.unibasId}/refresh?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`,
+                { method: 'POST' }
+            );
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                errorMsg = err.error ?? 'Neu laden fehlgeschlagen.';
+                return;
+            }
+            await loadByUnibasId(full.unibasId);
+        } finally {
+            refreshing = false;
+        }
+    }
+
     async function loadByUnibasId(unibasId: number) {
         loading = true;
         errorMsg = null;
@@ -192,7 +213,7 @@
                         {full.typeLabel}
                     </span>
                 {/if}
-                <span class="font-medium text-slate-700 truncate">{full.title}</span>
+                <span class="font-medium text-slate-700 truncate" title={full.title}>{full.title}</span>
                 {#if full.credits}
                     <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
                         {full.credits} KP
@@ -205,6 +226,14 @@
                     class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
                     title="Im Vorlesungsverzeichnis öffnen"
                 >↗</button>
+                <button
+                    onclick={handleRefresh}
+                    disabled={refreshing}
+                    class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40"
+                    title="Diese Vorlesung neu von der Quelle laden"
+                >
+                    <span class={refreshing ? 'animate-spin inline-block' : ''}>↻</span>
+                </button>
                 <button
                     onclick={isSelected(full.unibasId) ? handleRemoveFromSelection : handleAddToSelection}
                     disabled={!isSelected(full.unibasId) && !catalogEntry}

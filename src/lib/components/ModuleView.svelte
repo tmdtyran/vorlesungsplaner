@@ -7,9 +7,11 @@
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
 
     let selectedDetail = $state<LectureDetail | null>(null);
+    let selectedCatalog = $state<CatalogEntry | null>(null);
 
     async function handleSelectFromPanel(catalog: CatalogEntry) {
         if (!catalog.unibas_id) return;
+        selectedCatalog = catalog;
         try {
             const res = await fetch(`/api/lectures/${catalog.unibas_id}?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
             selectedDetail = res.ok ? await res.json() : null;
@@ -23,7 +25,8 @@
     // as an additional option for every lecture, regardless of its modules.
     function getModules(sel: (typeof selectedLectures)[0]): string[] {
         const mods = sel.detail?.modules ?? [];
-        return [...mods, 'Freie Leistungen'];
+        const cleaned = mods.map(m => m.replace(/^modul\s*:\s*/i, ''));
+        return [...cleaned, 'Freie Leistungen'];
     }
 
     // Only lectures still active (checked) in "Meine Auswahl" appear here at all.
@@ -48,7 +51,7 @@
     );
 </script>
 
-<div class="flex h-full">
+<div class="flex h-full flex-col">
     <div class="flex-1 flex flex-col min-w-0">
         {#if visibleLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
@@ -91,7 +94,7 @@
                                                 {sel.catalog.type_label}
                                             </span>
                                         {/if}
-                                        <p class="font-medium text-slate-800">{sel.catalog.title}</p>
+                                        <p class="font-medium text-slate-800" title={sel.catalog.title}>{sel.catalog.title}</p>
                                     </div>
                                     {#if sel.catalog.course_number}
                                         <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>
@@ -155,7 +158,7 @@
             </div>
         {/if}
 
-        <LectureMiniDetail detail={selectedDetail} onClose={() => selectedDetail = null} />
+        <LectureMiniDetail detail={selectedDetail} typeLabel={selectedCatalog?.type_label ?? null} credits={selectedCatalog?.credits ?? null} onClose={() => { selectedDetail = null; selectedCatalog = null; }} />
     </div>
 
     <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
