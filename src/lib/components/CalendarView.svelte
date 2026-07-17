@@ -196,7 +196,7 @@
                     seen.add(key);
 
                     const timeLabel = `${t.start_time}–${t.end_time}`;
-                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
+                    days[day].push({ title: `${sel.catalog.title}${sel.catalog.course_number ? ` (${sel.catalog.course_number})` : ""}`, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
                 }
             } else if (sel.detail?.events?.length) {
                 const seen = new Set<string>();
@@ -214,7 +214,7 @@
                     seen.add(key);
 
                     const timeLabel = `${ev.start_time}–${ev.end_time}`;
-                    days[day].push({ title: sel.catalog.title, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
+                    days[day].push({ title: `${sel.catalog.title}${sel.catalog.course_number ? ` (${sel.catalog.course_number})` : ""}`, typeLabel: sel.catalog.type_label, startMin, endMin, color: colorIndexFor(sel.catalog.unibas_id).toString(), timeLabel });
                 }
             }
         });
@@ -243,7 +243,7 @@
 
                 const timeLabel = `${ev.start_time}–${ev.end_time}`;
                 days[dayIdx].push({
-                    title: sel.catalog.title,
+                    title: `${sel.catalog.title}${sel.catalog.course_number ? ` (${sel.catalog.course_number})` : ""}`,
                     typeLabel: sel.catalog.type_label,
                     startMin, endMin,
                     color: colorIndexFor(sel.catalog.unibas_id).toString(),

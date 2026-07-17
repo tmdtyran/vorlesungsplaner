@@ -51,7 +51,7 @@
     );
 </script>
 
-<div class="flex h-full flex-col">
+<div class="flex h-full">
     <div class="flex-1 flex flex-col min-w-0">
         {#if visibleLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">

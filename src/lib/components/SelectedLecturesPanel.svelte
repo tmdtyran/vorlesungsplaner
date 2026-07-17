@@ -26,6 +26,22 @@
     }
 
     const activeCount = $derived(selectedLectures.filter(s => s.active).length);
+
+    let copied = $state(false);
+
+    async function handleCopyIds() {
+        const ids = selectedLectures
+            .map(s => s.catalog.course_number)
+            .filter((cn): cn is string => !!cn)
+            .join('\n\n');
+        try {
+            await navigator.clipboard.writeText(ids);
+            copied = true;
+            setTimeout(() => copied = false, 1500);
+        } catch {
+            // clipboard access denied — silently ignore
+        }
+    }
 </script>
 
 {#if expanded}
@@ -34,8 +50,14 @@
             <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Meine Auswahl</span>
             <span class="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">{activeCount}/{selectedLectures.length}</span>
             <button
+                onclick={handleCopyIds}
+                disabled={selectedLectures.length === 0}
+                class="ml-auto text-slate-400 hover:text-slate-600 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Vorlesungs-IDs kopieren"
+            >{copied ? '✓' : '⧉'}</button>
+            <button
                 onclick={() => expanded = false}
-                class="ml-auto text-slate-400 hover:text-slate-600 text-sm"
+                class="text-slate-400 hover:text-slate-600 text-sm"
                 title="Einklappen"
             >✕</button>
         </div>

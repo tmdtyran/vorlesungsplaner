@@ -143,7 +143,10 @@
             }
             full = await res.json();
             activeSubTab = 'description';
-            if (full?.unibasId) await loadSupportingData(full.unibasId);
+            if (full?.unibasId) {
+                nav.detailsUnibasId = full.unibasId;
+                await loadSupportingData(full.unibasId);
+            }
         } catch (err: any) {
             errorMsg = err?.message ?? String(err);
         }
@@ -172,7 +175,7 @@
     // the internal unibas_id already, so it loads directly by ID and then
     // syncs the visible field to the matching course number.
     $effect(() => {
-        if (nav.detailsUnibasId !== null) {
+        if (nav.detailsUnibasId !== null && nav.detailsUnibasId !== full?.unibasId) {
             loadByUnibasId(nav.detailsUnibasId);
         }
     });
