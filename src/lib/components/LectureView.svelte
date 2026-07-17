@@ -43,6 +43,7 @@
 
     let allLectures = $state<CatalogEntry[]>([]);
     let selectedDetail = $state<LectureDetail | null>(null);
+    let selectedCatalog = $state<CatalogEntry | null>(null);
     let selectedFromRight = $state(false);
     let loading = $state(false);
 
@@ -108,6 +109,7 @@
 
     async function selectLecture(lecture: CatalogEntry, fromRight = false) {
         selectedFromRight = fromRight;
+        selectedCatalog = lecture;
         const detail = await fetchDetail(lecture);
         selectedDetail = detail;
     }
@@ -442,6 +444,6 @@
     </div>
 
     <!-- Detail panel (shared component) -->
-    <LectureMiniDetail detail={selectedDetail} onClose={() => selectedDetail = null} />
+    <LectureMiniDetail detail={selectedDetail} typeLabel={selectedCatalog?.type_label ?? null} onClose={() => { selectedDetail = null; selectedCatalog = null; }} />
 
 </div>

@@ -4,16 +4,24 @@
 
     interface Props {
         detail: LectureDetail | null;
+        typeLabel?: string | null;
         onClose: () => void;
     }
-    let { detail, onClose }: Props = $props();
+    let { detail, typeLabel = null, onClose }: Props = $props();
 </script>
 
 {#if detail}
     <div class="border-t border-slate-200 bg-slate-50 p-5 overflow-y-auto max-h-72">
         <div class="flex items-start justify-between gap-4">
-            <div>
-                <h3 class="text-base font-semibold text-slate-900">{detail.title}</h3>
+            <div class="min-w-0">
+                <div class="flex items-center gap-1.5 flex-wrap">
+                    {#if typeLabel}
+                        <span class="shrink-0 rounded bg-indigo-50 px-1 py-0.5 text-[9px] font-semibold text-indigo-600 uppercase tracking-wide">
+                            {typeLabel}
+                        </span>
+                    {/if}
+                    <h3 class="text-base font-semibold text-slate-900 truncate" title={detail.title}>{detail.title}</h3>
+                </div>
                 {#if detail.course_number}
                     <p class="text-xs text-slate-500 mt-0.5">{detail.course_number}</p>
                 {/if}
@@ -66,7 +74,7 @@
         {#if detail.content}
             <div class="mt-3">
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Beschreibung</p>
-                <p class="text-sm text-slate-700 leading-relaxed line-clamp-4 whitespace-pre-line">{detail.content}</p>
+                <p class="text-sm text-slate-700 leading-relaxed whitespace-pre-line">{detail.content}</p>
             </div>
         {:else if detail.imported_at}
             <div class="mt-3">
