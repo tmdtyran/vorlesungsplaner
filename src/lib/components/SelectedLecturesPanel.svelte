@@ -54,16 +54,23 @@
         }
     }
 
+    function handleOpenVvz(unibasId: number | null, e: MouseEvent) {
+        e.stopPropagation();
+        if (unibasId !== null) {
+            window.open(lectureVvzUrl(unibasId, activeSemester.lang === 'en' ? 'en' : 'de'), '_blank', 'noopener,noreferrer');
+        }
+    }
+
     function lectureVvzUrl(unibasId: number, lang: 'de' | 'en'): string {
         const path = lang === 'de' ? 'de/vorlesungsverzeichnis' : 'en/course-directory';
         return `https://vorlesungsverzeichnis.unibas.ch/${path}?id=${unibasId}`;
     }
 
     function handleOpenAllInVvz() {
-        for (const s of selectedLectures) {
-            if (s.catalog.unibas_id) {
-                window.open(lectureVvzUrl(s.catalog.unibas_id, activeSemester.lang === 'en' ? 'en' : 'de'), '_blank', 'noopener,noreferrer');
-            }
+        const ids = selectedLectures.map(s => s.catalog.unibas_id).filter((id): id is number => id !== null);
+        const lang = activeSemester.lang === 'en' ? 'en' : 'de';
+        for (const id of ids) {
+            window.open(lectureVvzUrl(id, lang), '_blank', 'noopener,noreferrer');
         }
     }
 </script>
@@ -84,7 +91,7 @@
                 disabled={selectedLectures.length === 0}
                 class="text-slate-400 hover:text-slate-600 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Alle im Vorlesungsverzeichnis öffnen"
-            >⤢</button>
+            >↗</button>
             <button
                 onclick={() => expanded = false}
                 class="text-slate-400 hover:text-slate-600 text-sm"
@@ -151,11 +158,18 @@
                                 class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
                                 title="Entfernen"
                             >−</button>
-                            <button
-                                onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
-                                class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
-                                title="Im Details-Tab öffnen"
-                            >→</button>
+                            <div class="flex gap-1">
+                                <button
+                                    onclick={(e) => handleOpenVvz(sel.catalog.unibas_id, e)}
+                                    class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500 text-xs transition-opacity hover:bg-slate-200 hover:text-slate-700"
+                                    title="Im Vorlesungsverzeichnis öffnen"
+                                >↗</button>
+                                <button
+                                    onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
+                                    class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
+                                    title="Im Details-Tab öffnen"
+                                >→</button>
+                            </div>
                         </div>
                     </div>
                 {/each}

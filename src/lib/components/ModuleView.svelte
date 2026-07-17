@@ -65,20 +65,22 @@
     );
 </script>
 
-<div class="flex h-full">
-    <div class="flex-1 flex flex-col min-w-0">
-        <!-- Search bar (same height/style as Kursauswahl) -->
-        <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-white">
-            <div class="relative flex-1 max-w-sm">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
-                <input
-                    bind:value={search}
-                    placeholder="Vorlesungen suchen..."
-                    class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
-                />
-            </div>
-            <span class="text-xs text-slate-400">{displayedLectures.length} Vorlesungen</span>
+<div class="flex h-full flex-col">
+    <!-- Search bar (same height/style as Kursauswahl, spans full width above both columns) -->
+    <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 min-h-15 bg-white">
+        <div class="relative flex-1 max-w-sm">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+            <input
+                bind:value={search}
+                placeholder="Vorlesungen suchen..."
+                class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+            />
         </div>
+        <span class="text-xs text-slate-400">{displayedLectures.length} Vorlesungen</span>
+    </div>
+
+    <div class="flex flex-1 min-h-0">
+    <div class="flex-1 flex flex-col min-w-0">
         {#if visibleLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                 <span class="text-4xl">📊</span>
@@ -191,4 +193,5 @@
     </div>
 
     <SelectedLecturesPanel onSelect={handleSelectFromPanel} />
+    </div>
 </div>

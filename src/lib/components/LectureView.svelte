@@ -251,7 +251,7 @@
 
 <div class="flex h-full flex-col gap-0">
     <!-- Top bar -->
-    <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-white">
+    <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 min-h-15 bg-white">
         <div class="flex rounded-lg border border-slate-200 overflow-hidden">
             <button
                 onclick={() => lectureViewState.viewMode = 'flat'}

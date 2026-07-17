@@ -455,7 +455,7 @@
 </script>
 
 <div class="flex h-full flex-col overflow-hidden bg-white">
-    <div class="flex items-center gap-3 border-b border-slate-200 px-4 py-2.5 flex-wrap">
+    <div class="flex items-center gap-3 border-b border-slate-200 px-4 py-2 flex-wrap min-h-15">
         <div class="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
             <button
                 onclick={() => viewMode = 'typical'}
