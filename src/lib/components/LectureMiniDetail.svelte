@@ -68,6 +68,10 @@
                 <p class="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1.5">Beschreibung</p>
                 <p class="text-sm text-slate-700 leading-relaxed line-clamp-4 whitespace-pre-line">{detail.content}</p>
             </div>
+        {:else if detail.imported_at}
+            <div class="mt-3">
+                <p class="text-xs text-slate-400">Keine Beschreibung vorhanden.</p>
+            </div>
         {:else}
             <div class="mt-3">
                 <p class="text-xs text-slate-400">Keine Beschreibung verfügbar — führe "Import All Lectures" aus, um Details zu laden.</p>

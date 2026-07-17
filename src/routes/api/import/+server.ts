@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
+import { fetchLectureHtml } from "$lib/server/importer/unibas";
 import { startJob, getJob, jobKey } from "$lib/server/importJobs";
 import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
@@ -288,15 +289,11 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
 
     log(`${rows.length} eindeutige Vorlesungen in data/${periodeId}_${lang}.db`);
 
-    const langPath = lang === "de" ? "de/vorlesungsverzeichnis" : "en/course-directory";
     let success = 0, failed = 0;
 
     for (const row of rows) {
         try {
-            const html = await fetch(
-                `${BASE}/${langPath}?id=${row.unibas_id}`,
-                { headers: { "User-Agent": "Mozilla/5.0" } }
-            ).then(r => r.text());
+            const html = await fetchLectureHtml(row.unibas_id, lang === "de" ? "de" : "en");
 
             const parsed = parseLectureDetails(html, row.unibas_id);
 
@@ -338,6 +335,12 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
             failed++;
             log(`✗ ${row.unibas_id}: ${err?.message ?? err}`);
         }
+
+        // A small pause between requests — fetchLectureHtml already backs
+        // off and retries individual rate-limit/block responses, but
+        // spacing requests out to begin with makes triggering the server's
+        // "abusive connection counts" block in the first place less likely.
+        await new Promise(r => setTimeout(r, 150));
     }
     log(`Fertig: ${success} erfolgreich, ${failed} fehlgeschlagen.`);
 
