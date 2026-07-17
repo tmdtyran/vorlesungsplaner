@@ -1,6 +1,7 @@
 <script lang="ts">
     import { selectedLectures, removeLecture, toggleActive } from '$lib/stores/selectedLectures.svelte';
     import { goToDetails } from '$lib/stores/navigation.svelte';
+    import { activeSemester } from '$lib/stores/semester.svelte';
     import type { CatalogEntry } from '$lib/types/lecture';
 
     interface Props {
@@ -28,6 +29,16 @@
     const activeCount = $derived(selectedLectures.filter(s => s.active).length);
 
     let copied = $state(false);
+    let search = $state('');
+
+    const filteredLectures = $derived(
+        selectedLectures.filter(s => {
+            const q = search.trim().toLowerCase();
+            if (!q) return true;
+            return s.catalog.title.toLowerCase().includes(q)
+                || (s.catalog.course_number ?? '').toLowerCase().includes(q);
+        })
+    );
 
     async function handleCopyIds() {
         const ids = selectedLectures
@@ -40,6 +51,19 @@
             setTimeout(() => copied = false, 1500);
         } catch {
             // clipboard access denied — silently ignore
+        }
+    }
+
+    function lectureVvzUrl(unibasId: number, lang: 'de' | 'en'): string {
+        const path = lang === 'de' ? 'de/vorlesungsverzeichnis' : 'en/course-directory';
+        return `https://vorlesungsverzeichnis.unibas.ch/${path}?id=${unibasId}`;
+    }
+
+    function handleOpenAllInVvz() {
+        for (const s of selectedLectures) {
+            if (s.catalog.unibas_id) {
+                window.open(lectureVvzUrl(s.catalog.unibas_id, activeSemester.lang === 'en' ? 'en' : 'de'), '_blank', 'noopener,noreferrer');
+            }
         }
     }
 </script>
@@ -56,10 +80,26 @@
                 title="Vorlesungs-IDs kopieren"
             >{copied ? '✓' : '⧉'}</button>
             <button
+                onclick={handleOpenAllInVvz}
+                disabled={selectedLectures.length === 0}
+                class="text-slate-400 hover:text-slate-600 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Alle im Vorlesungsverzeichnis öffnen"
+            >⤢</button>
+            <button
                 onclick={() => expanded = false}
                 class="text-slate-400 hover:text-slate-600 text-sm"
                 title="Einklappen"
             >✕</button>
+        </div>
+        <div class="flex items-center gap-2 border-b border-slate-200 px-3 py-2 bg-white">
+            <div class="relative flex-1">
+                <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+                <input
+                    bind:value={search}
+                    placeholder="Suchen..."
+                    class="w-full rounded-lg border border-slate-200 pl-7 pr-2 py-1 text-xs focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+                />
+            </div>
         </div>
         <div class="flex-1 overflow-y-auto bg-slate-50">
             {#if selectedLectures.length === 0}
@@ -67,8 +107,12 @@
                     <span class="text-2xl">📋</span>
                     Noch keine Vorlesungen ausgewählt.
                 </div>
+            {:else if filteredLectures.length === 0}
+                <div class="flex flex-col items-center justify-center h-32 text-slate-400 text-xs px-4 text-center gap-2">
+                    Keine Treffer.
+                </div>
             {:else}
-                {#each selectedLectures as sel (sel.catalog.unibas_id)}
+                {#each filteredLectures as sel (sel.catalog.unibas_id)}
                     <div
                         role="button"
                         tabindex="0"

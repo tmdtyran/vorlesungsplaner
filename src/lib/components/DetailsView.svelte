@@ -190,18 +190,18 @@
 {/snippet}
 
     <!-- Course number input -->
-    <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-4">
+    <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-2">
         <label class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Kursnummer</label>
         <input
             bind:value={courseNumberInput}
             onkeydown={(e) => e.key === 'Enter' && handleSubmit()}
             placeholder="z.B. 65935-01"
-            class="w-48 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+            class="w-48 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
         />
         <button
             onclick={handleSubmit}
             disabled={loading}
-            class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
+            class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
         >
             {#if loading}
                 <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>

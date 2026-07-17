@@ -29,8 +29,22 @@
         return [...cleaned, 'Freie Leistungen'];
     }
 
+    let search = $state('');
+
     // Only lectures still active (checked) in "Meine Auswahl" appear here at all.
     const visibleLectures = $derived(selectedLectures.filter(s => s.active));
+
+    // Search only narrows which rows are shown in the table — KP totals
+    // below always reflect all active/included lectures, not just the
+    // currently filtered/visible rows.
+    const displayedLectures = $derived(
+        visibleLectures.filter(s => {
+            const q = search.trim().toLowerCase();
+            if (!q) return true;
+            return s.catalog.title.toLowerCase().includes(q)
+                || (s.catalog.course_number ?? '').toLowerCase().includes(q);
+        })
+    );
 
     const moduleCredits = $derived(() => {
         const map = new Map<string, number>();
@@ -53,6 +67,18 @@
 
 <div class="flex h-full">
     <div class="flex-1 flex flex-col min-w-0">
+        <!-- Search bar (same height/style as Kursauswahl) -->
+        <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-white">
+            <div class="relative flex-1 max-w-sm">
+                <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                <input
+                    bind:value={search}
+                    placeholder="Vorlesungen suchen..."
+                    class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+                />
+            </div>
+            <span class="text-xs text-slate-400">{displayedLectures.length} Vorlesungen</span>
+        </div>
         {#if visibleLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                 <span class="text-4xl">📊</span>
@@ -75,7 +101,10 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each visibleLectures as sel (sel.catalog.unibas_id)}
+                        {#if displayedLectures.length === 0}
+                            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Keine Vorlesungen gefunden</td></tr>
+                        {/if}
+                        {#each displayedLectures as sel (sel.catalog.unibas_id)}
                             {@const modules = getModules(sel)}
                             <tr class="border-b border-slate-100 transition-colors hover:bg-slate-50 {!sel.included ? 'opacity-50' : ''}">
                                 <td class="px-4 py-3">
