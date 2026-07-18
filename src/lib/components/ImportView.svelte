@@ -188,6 +188,48 @@
         const statusInterval = setInterval(loadStatus, 4000);
         return () => clearInterval(statusInterval);
     });
+    async function handleDeleteData(type: 'catalogue' | 'lectures', periodeId: string, lang: string, label: string) {
+        if (!confirm(`"${label}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`)) return;
+        try {
+            const res = await fetch('/api/import/data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, periodeId, lang })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                alert(err.error ?? 'Löschen fehlgeschlagen.');
+                return;
+            }
+            await loadStatus();
+        } catch (err: any) {
+            alert(err?.message ?? 'Löschen fehlgeschlagen.');
+        }
+    }
+
+    async function handleCancelImport() {
+        if (!currentAction) return;
+        try {
+            const res = await fetch('/api/import/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: currentAction, periodeId: importPeriodeId, lang: importLang })
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                logs = [...logs, `Fehler beim Abbrechen: ${err.error ?? res.statusText}`];
+                return;
+            }
+            logs = [...logs, 'Abgebrochen — Daten gelöscht.'];
+        } catch (err: any) {
+            logs = [...logs, `Fehler beim Abbrechen: ${err?.message ?? err}`];
+        } finally {
+            stopPolling();
+            jobStatus = 'idle';
+            currentAction = null;
+            await loadStatus();
+        }
+    }
 </script>
 
 <div class="flex h-full flex-col gap-5 p-6">
@@ -243,6 +285,14 @@
         </div>
 
         <div class="ml-auto flex gap-3">
+            {#if jobStatus === 'running'}
+                <button
+                    onclick={handleCancelImport}
+                    class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
+                >
+                    ✕ Abbrechen
+                </button>
+            {/if}
             <button
                 disabled={jobStatus === 'running' || importPeriodeId === 'default'}
                 onclick={() => runImport('catalogue')}
@@ -291,39 +341,47 @@
                             <tr class="border-b border-slate-100 hover:bg-slate-50">
                                 <td class="px-4 py-2 text-slate-700">{s.label_de}</td>
 
-                                <td class="px-3 py-2 text-center" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
                                     {#if isJobRunning('catalogue', s.periodeId, 'de')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if de?.catalogImportedAt}
-                                        <span class="text-emerald-600">✓</span>
+                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'de', `Katalog DE — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                            <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
+                                        </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
                                     {#if isJobRunning('lectures', s.periodeId, 'de')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if de?.lecturesImportedAt}
-                                        <span class="text-emerald-600">✓</span>
+                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'de', `Details DE — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                            <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
+                                        </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
 
-                                <td class="px-3 py-2 text-center" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
                                     {#if isJobRunning('catalogue', s.periodeId, 'en')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if en?.catalogImportedAt}
-                                        <span class="text-emerald-600">✓</span>
+                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'en', `Katalog EN — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                            <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
+                                        </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
                                     {#if isJobRunning('lectures', s.periodeId, 'en')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if en?.lecturesImportedAt}
-                                        <span class="text-emerald-600">✓</span>
+                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'en', `Details EN — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                            <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
+                                        </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}

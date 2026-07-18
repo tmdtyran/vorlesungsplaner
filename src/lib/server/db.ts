@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Database as BunDatabase } from "bun:sqlite";
+import { invalidateLecturesCache } from "./lecturesCache";
 
 // WICHTIG: Umstieg von better-sqlite3 auf bun:sqlite (in Bun eingebaut,
 // keine native .node-Kompilierung noetig). Gruende:
@@ -158,6 +159,26 @@ export function clearImportMeta(db: BunDatabase, keys: string[]) {
     for (const key of keys) {
         stmt.run(key);
     }
+}
+
+/**
+ * Deletes the data for one part of the import (catalogue, or lecture
+ * details/events) for a given periode+lang, and clears the matching
+ * import_meta entries — used by the per-cell trash icon and by cancelling
+ * a running import.
+ */
+export function clearImportedData(periodeId: string, lang: string, type: "catalogue" | "lectures") {
+    const db = getDb(periodeId, lang);
+    if (type === "catalogue") {
+        db.exec(`DELETE FROM lecture_times`);
+        db.exec(`DELETE FROM lecture_catalog`);
+        clearImportMeta(db, ["catalog_imported_at", "catalog_node_count", "catalog_lecture_count"]);
+    } else {
+        db.exec(`DELETE FROM lecture_detail_events`);
+        db.exec(`DELETE FROM lecture_details`);
+        clearImportMeta(db, ["lectures_imported_at", "lectures_success_count", "lectures_total_count"]);
+    }
+    invalidateLecturesCache(periodeId, lang);
 }
 
 function initSchema(db: BunDatabase) {

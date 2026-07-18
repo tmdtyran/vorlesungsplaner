@@ -6,7 +6,7 @@ import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
 const BASE = "https://vorlesungsverzeichnis.unibas.ch";
 
-async function runCatalogueImport(periodeId: string, lang: string, log: (msg: string) => void) {
+async function runCatalogueImport(periodeId: string, lang: string, log: (msg: string) => void, isCancelled: () => boolean) {
     const db = getDb(periodeId, lang);
     const LANG_PAGE = lang === "de" ? "de/semesterprogramm" : "en/semester-program";
 
@@ -152,6 +152,7 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
 
     async function processNodes(nodes: any[], parentKey: string | null, depth: number) {
         for (const node of nodes) {
+            if (isCancelled()) return;
             const hk = parseInt(node.key);
             if (isNaN(hk)) continue;
 
@@ -217,6 +218,11 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
 
     try {
         await processNodes(rootNodes, null, 0);
+        if (isCancelled()) {
+            db.exec(`ROLLBACK`);
+            log(`Abgebrochen nach ${nodeCount} Knoten — nicht committet.`);
+            return;
+        }
         db.exec(`COMMIT`);
         log(`✓ Alle Daten committet (${nodeCount} Knoten). [build: tx-v4]`);
         log(`  [DEBUG] Leaf-Kandidaten (nicht lazy, keine Kinder): ${leafCandidateCount}, davon erfolgreich geparst: ${leafParsedCount}`);
@@ -277,7 +283,7 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
     }
 }
 
-async function runLecturesImport(periodeId: string, lang: string, log: (msg: string) => void) {
+async function runLecturesImport(periodeId: string, lang: string, log: (msg: string) => void, isCancelled: () => boolean) {
     const db = getDb(periodeId, lang);
 
     clearImportMeta(db, ["lectures_imported_at", "lectures_success_count", "lectures_total_count"]);
@@ -292,6 +298,10 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
     let success = 0, failed = 0;
 
     for (const row of rows) {
+        if (isCancelled()) {
+            log(`Abgebrochen nach ${success + failed}/${rows.length} Vorlesungen.`);
+            break;
+        }
         try {
             const html = await fetch(
                 `${BASE}/${langPath}?id=${row.unibas_id}`,
@@ -388,11 +398,13 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
     }
     log(`Fertig: ${success} erfolgreich, ${failed} fehlgeschlagen.`);
 
-    setImportMeta(db, {
-        lectures_imported_at: new Date().toISOString(),
-        lectures_success_count: String(success),
-        lectures_total_count: String(rows.length)
-    });
+    if (!isCancelled()) {
+        setImportMeta(db, {
+            lectures_imported_at: new Date().toISOString(),
+            lectures_success_count: String(success),
+            lectures_total_count: String(rows.length)
+        });
+    }
 }
 
 // Starts a background job and returns immediately — the client polls
@@ -410,8 +422,8 @@ export async function POST({ request }) {
     }
 
     const runner = action === "catalogue"
-        ? (log: (msg: string) => void) => runCatalogueImport(periodeId, lang, log)
-        : (log: (msg: string) => void) => runLecturesImport(periodeId, lang, log);
+        ? (log: (msg: string) => void, isCancelled: () => boolean) => runCatalogueImport(periodeId, lang, log, isCancelled)
+        : (log: (msg: string) => void, isCancelled: () => boolean) => runLecturesImport(periodeId, lang, log, isCancelled);
 
     const job = startJob(action, periodeId, lang, runner);
 
