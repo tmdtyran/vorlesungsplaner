@@ -165,22 +165,22 @@
 
             <!-- Summary footer -->
             <div class="border-t border-slate-200 bg-slate-50 p-5">
-                <div class="flex flex-wrap gap-6 items-start">
-                    <div>
+                <div class="flex gap-6 items-start">
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">KP pro Modul</p>
-                        <div class="flex flex-wrap gap-3">
+                        <div class="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
                             {#each moduleCredits() as [mod, credits]}
-                                <div class="flex items-center gap-2 rounded-lg bg-white border border-slate-200 px-3 py-2">
-                                    <span class="text-sm text-slate-700 max-w-48 truncate">{mod}</span>
-                                    <span class="rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white">{credits}</span>
+                                <div class="flex items-center gap-2 px-3 py-2" title={mod}>
+                                    <span class="flex-1 min-w-0 text-sm text-slate-700 truncate">{mod}</span>
+                                    <span class="shrink-0 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-bold text-white">{credits}</span>
                                 </div>
                             {/each}
                             {#if moduleCredits().length === 0}
-                                <p class="text-xs text-slate-400">Keine eingeschlossenen Vorlesungen.</p>
+                                <p class="text-xs text-slate-400 px-3 py-2">Keine eingeschlossenen Vorlesungen.</p>
                             {/if}
                         </div>
                     </div>
-                    <div class="ml-auto text-right">
+                    <div class="ml-auto text-right shrink-0">
                         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Gesamt KP</p>
                         <p class="text-3xl font-bold text-indigo-600">{totalCredits}</p>
                         <p class="text-xs text-slate-400">{visibleLectures.filter(s => s.included).length} von {visibleLectures.length} eingeschlossen</p>

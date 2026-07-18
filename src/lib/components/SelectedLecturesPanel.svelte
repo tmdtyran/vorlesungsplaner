@@ -1,6 +1,6 @@
 <script lang="ts">
     import { selectedLectures, removeLecture, toggleActive } from '$lib/stores/selectedLectures.svelte';
-    import { goToDetails } from '$lib/stores/navigation.svelte';
+    import { goToDetails, nav, setSelectedPanelExpanded } from '$lib/stores/navigation.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import type { CatalogEntry } from '$lib/types/lecture';
 
@@ -8,8 +8,6 @@
         onSelect?: (catalog: CatalogEntry) => void;
     }
     let { onSelect }: Props = $props();
-
-    let expanded = $state(true);
 
     function handleRemove(unibasId: number | null, e: MouseEvent) {
         e.stopPropagation();
@@ -75,7 +73,7 @@
     }
 </script>
 
-{#if expanded}
+{#if nav.selectedPanelExpanded}
     <div class="flex flex-col w-72 shrink-0 border-l border-slate-200">
         <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-slate-50">
             <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Meine Auswahl</span>
@@ -93,7 +91,7 @@
                 title="Alle im Vorlesungsverzeichnis öffnen"
             >↗</button>
             <button
-                onclick={() => expanded = false}
+                onclick={() => setSelectedPanelExpanded(false)}
                 class="text-slate-400 hover:text-slate-600 text-sm"
                 title="Einklappen"
             >✕</button>
@@ -178,7 +176,7 @@
     </div>
 {:else}
     <button
-        onclick={() => expanded = true}
+        onclick={() => setSelectedPanelExpanded(true)}
         class="flex shrink-0 flex-col items-center gap-1 border-l border-slate-200 bg-slate-50 px-2 py-4 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
         title="Meine Auswahl anzeigen"
     >
