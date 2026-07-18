@@ -251,7 +251,7 @@ function initSchema(db: BunDatabase) {
 
     // Migrations
     const catalogCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog)`).all() as any[]).map(c => c.name));
-    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0'],['type_label','TEXT']] as [string,string][]) {
+    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0'],['type_label','TEXT'],['schedule','TEXT']] as [string,string][]) {
         if (!catalogCols.has(col)) db.exec(`ALTER TABLE lecture_catalog ADD COLUMN ${col} ${type}`);
     }
     const detailCols = new Set((db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[]).map(c => c.name));
@@ -285,15 +285,17 @@ function initSchema(db: BunDatabase) {
                     lecturer TEXT,
                     parent_key INTEGER,
                     node_type TEXT,
-                    depth INTEGER DEFAULT 0
+                    depth INTEGER DEFAULT 0,
+                    schedule TEXT
                 );
             `);
             const oldCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog_old)`).all() as any[]).map(c => c.name));
             const typeLabelSelect = oldCols.has('type_label') ? 'type_label' : 'NULL AS type_label';
+            const scheduleSelect = oldCols.has('schedule') ? 'schedule' : 'NULL AS schedule';
             db.exec(`
                 INSERT INTO lecture_catalog
-                    (id, hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth)
-                SELECT id, hierarchy_key, unibas_id, course_number, title, ${typeLabelSelect}, credits, lecturer, parent_key, node_type, depth
+                    (id, hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth, schedule)
+                SELECT id, hierarchy_key, unibas_id, course_number, title, ${typeLabelSelect}, credits, lecturer, parent_key, node_type, depth, ${scheduleSelect}
                 FROM lecture_catalog_old;
             `);
             db.exec(`DROP TABLE lecture_catalog_old;`);

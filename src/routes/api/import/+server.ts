@@ -1,6 +1,7 @@
 import { json } from "@sveltejs/kit";
 import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
+import { fetchLectureHtml } from "$lib/server/importer/unibas";
 import { startJob, getJob, jobKey } from "$lib/server/importJobs";
 import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
@@ -294,7 +295,6 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
 
     log(`${rows.length} eindeutige Vorlesungen in data/${periodeId}_${lang}.db`);
 
-    const langPath = lang === "de" ? "de/vorlesungsverzeichnis" : "en/course-directory";
     let success = 0, failed = 0;
 
     for (const row of rows) {
@@ -303,10 +303,7 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
             break;
         }
         try {
-            const html = await fetch(
-                `${BASE}/${langPath}?id=${row.unibas_id}`,
-                { headers: { "User-Agent": "Mozilla/5.0" } }
-            ).then(r => r.text());
+            const html = await fetchLectureHtml(row.unibas_id, lang === "de" ? "de" : "en");
 
             const parsed = parseLectureDetails(html, row.unibas_id);
 
@@ -352,40 +349,48 @@ async function runLecturesImport(periodeId: string, lang: string, log: (msg: str
             // makes the fast catalog list reflect it too, without needing
             // a per-row live parse on every read).
             if (parsed.recurringPattern.length > 0) {
-                const catalogRows = db.prepare(
-                    `SELECT id FROM lecture_catalog WHERE unibas_id = ?`
-                ).all(row.unibas_id) as { id: number }[];
+                try {
+                    const catalogRows = db.prepare(
+                        `SELECT id FROM lecture_catalog WHERE unibas_id = ?`
+                    ).all(row.unibas_id) as { id: number }[];
 
-                for (const catalogRow of catalogRows) {
-                    const existingTimes = db.prepare(
-                        `SELECT COUNT(*) as n FROM lecture_times WHERE lecture_catalog_id = ?`
-                    ).get(catalogRow.id) as { n: number };
-                    if (existingTimes.n > 0) continue; // catalogue import already has real data
+                    for (const catalogRow of catalogRows) {
+                        const existingTimes = db.prepare(
+                            `SELECT COUNT(*) as n FROM lecture_times WHERE lecture_catalog_id = ?`
+                        ).get(catalogRow.id) as { n: number };
+                        if (existingTimes.n > 0) continue; // catalogue import already has real data
 
-                    const slots: { frequency: string; weekday: string; start: string; end: string }[] = [];
-                    for (const p of parsed.recurringPattern) {
-                        const timeMatch = p.time.match(/(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/);
-                        if (!timeMatch) continue;
-                        slots.push({
-                            frequency: p.frequency,
-                            weekday: p.weekday,
-                            start: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
-                            end: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`
-                        });
+                        const slots: { frequency: string; weekday: string; start: string; end: string }[] = [];
+                        for (const p of parsed.recurringPattern) {
+                            const timeMatch = p.time.match(/(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/);
+                            if (!timeMatch) continue;
+                            slots.push({
+                                frequency: p.frequency,
+                                weekday: p.weekday,
+                                start: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
+                                end: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`
+                            });
+                        }
+                        if (slots.length === 0) continue;
+
+                        for (const slot of slots) {
+                            db.prepare(`
+                                INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
+                                VALUES (?, ?, ?, ?, ?)
+                            `).run(catalogRow.id, slot.frequency, slot.weekday, slot.start, slot.end);
+                        }
+
+                        const scheduleText = slots
+                            .map(s => `${s.frequency} ${s.weekday} ${s.start}-${s.end}`.trim())
+                            .join(' | ');
+                        db.prepare(`UPDATE lecture_catalog SET schedule = ? WHERE id = ?`).run(scheduleText, catalogRow.id);
                     }
-                    if (slots.length === 0) continue;
-
-                    for (const slot of slots) {
-                        db.prepare(`
-                            INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
-                            VALUES (?, ?, ?, ?, ?)
-                        `).run(catalogRow.id, slot.frequency, slot.weekday, slot.start, slot.end);
-                    }
-
-                    const scheduleText = slots
-                        .map(s => `${s.frequency} ${s.weekday} ${s.start}-${s.end}`.trim())
-                        .join(' | ');
-                    db.prepare(`UPDATE lecture_catalog SET schedule = ? WHERE id = ?`).run(scheduleText, catalogRow.id);
+                } catch (backfillErr: any) {
+                    // Best-effort enrichment only — the actual lecture detail
+                    // import above already succeeded, so don't count this
+                    // lecture as failed just because the schedule backfill
+                    // couldn't be written.
+                    log(`  (Hinweis: Schedule-Backfill für ${row.unibas_id} übersprungen: ${backfillErr?.message ?? backfillErr})`);
                 }
             }
 
