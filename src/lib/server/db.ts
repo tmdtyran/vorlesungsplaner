@@ -179,6 +179,16 @@ export function clearImportedData(periodeId: string, lang: string, type: "catalo
         clearImportMeta(db, ["lectures_imported_at", "lectures_success_count", "lectures_total_count"]);
     }
     invalidateLecturesCache(periodeId, lang);
+    // DELETE only frees the pages for reuse within the file — it doesn't
+    // shrink the file itself. VACUUM rebuilds the file to its actual
+    // current size, which matters here since lecture_details.raw_html
+    // rows (often the bulk of the file) were just wiped.
+    try {
+        db.exec(`VACUUM`);
+    } catch {
+        // best effort — data is already deleted either way, a failed
+        // VACUUM just means disk space isn't reclaimed this time
+    }
 }
 
 function initSchema(db: BunDatabase) {

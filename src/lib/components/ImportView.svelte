@@ -1,5 +1,6 @@
 <script lang="ts">
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
+    import { importViewState, pollState } from '$lib/stores/importViewState.svelte';
 
     interface ImportStatusEntry {
         periodeId: string;
@@ -17,18 +18,9 @@
         lang: string;
     }
 
-    let logs = $state<string[]>([]);
-    let jobStatus = $state<'idle' | 'running' | 'done' | 'error'>('idle');
-    let currentAction = $state<'catalogue' | 'lectures' | null>(null);
     let fetchingSemesters = $state(false);
     let importStatus = $state<ImportStatusEntry[]>([]);
     let runningJobs = $state<RunningJob[]>([]);
-
-    let importPeriodeId = $state(activeSemester.periodeId);
-    let importLang = $state(activeSemester.lang);
-
-    let pollHandle: ReturnType<typeof setInterval> | null = null;
-    let logsSeen = 0;
 
     function statusFor(periodeId: string, lang: string): ImportStatusEntry | null {
         return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
@@ -61,26 +53,26 @@
     }
 
     function stopPolling() {
-        if (pollHandle) {
-            clearInterval(pollHandle);
-            pollHandle = null;
+        if (pollState.handle) {
+            clearInterval(pollState.handle);
+            pollState.handle = null;
         }
     }
 
     function startPolling(action: 'catalogue' | 'lectures', periodeId: string, lang: string) {
         stopPolling();
-        currentAction = action;
+        importViewState.currentAction = action;
 
         const poll = async () => {
             try {
-                const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=${logsSeen}`);
+                const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=${importViewState.logsSeen}`);
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.logs?.length) {
-                    logs = [...logs, ...data.logs];
-                    logsSeen += data.logs.length;
+                    importViewState.logs = [...importViewState.logs, ...data.logs];
+                    importViewState.logsSeen += data.logs.length;
                 }
-                jobStatus = data.status;
+                importViewState.jobStatus = data.status;
                 if (data.status !== 'running') {
                     stopPolling();
                     await loadStatus();
@@ -91,7 +83,7 @@
         };
 
         poll();
-        pollHandle = setInterval(poll, 800);
+        pollState.handle = setInterval(poll, 800);
     }
 
     async function fetchSemesters() {
@@ -101,8 +93,8 @@
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data: SemesterOption[] = await res.json();
             availableSemesters.splice(0, availableSemesters.length, ...data);
-            if (data.length > 0 && importPeriodeId === 'default') {
-                importPeriodeId = data[0].periodeId;
+            if (data.length > 0 && importViewState.importPeriodeId === 'default') {
+                importViewState.importPeriodeId = data[0].periodeId;
             }
         } catch {
             // ignore — availableSemesters just stays whatever it was
@@ -111,62 +103,86 @@
     }
 
     async function runImport(action: 'catalogue' | 'lectures') {
-        logs = [];
-        logsSeen = 0;
-        jobStatus = 'running';
+        importViewState.logs = [];
+        importViewState.logsSeen = 0;
+        importViewState.jobStatus = 'running';
 
         try {
             const response = await fetch('/api/import', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action, periodeId: importPeriodeId, lang: importLang })
+                body: JSON.stringify({ action, periodeId: importViewState.importPeriodeId, lang: importViewState.importLang })
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                logs = [`Fehler: ${err.error ?? response.statusText}`];
-                jobStatus = 'error';
+                importViewState.logs = [`Fehler: ${err.error ?? response.statusText}`];
+                importViewState.jobStatus = 'error';
                 return;
             }
         } catch (err: any) {
-            logs = [`Fehler: ${err?.message ?? err}`];
-            jobStatus = 'error';
+            importViewState.logs = [`Fehler: ${err?.message ?? err}`];
+            importViewState.jobStatus = 'error';
             return;
         }
 
-        startPolling(action, importPeriodeId, importLang);
+        startPolling(action, importViewState.importPeriodeId, importViewState.importLang);
         await loadStatus();
     }
 
-    // Whenever the semester/lang selection changes, check whether a job for
-    // either action is already running for that combo (e.g. started before
-    // a page reload, or from another tab) and resume showing its live logs.
-    async function checkForRunningJob() {
-        stopPolling();
+    // Checks the server for a currently running job for the active
+    // semester/lang and, if found, syncs local state to it and (re)attaches
+    // polling. Does NOT touch existing state if nothing is running — so it's
+    // safe to call just to "reconcile", e.g. right after this component
+    // (re)mounts, without wiping out a finished job's log.
+    async function detectRunningJob(): Promise<boolean> {
         for (const action of ['catalogue', 'lectures'] as const) {
             try {
-                const res = await fetch(`/api/import?action=${action}&periodeId=${importPeriodeId}&lang=${importLang}`);
+                const res = await fetch(`/api/import?action=${action}&periodeId=${importViewState.importPeriodeId}&lang=${importViewState.importLang}`);
                 if (!res.ok) continue;
                 const data = await res.json();
                 if (data.status === 'running') {
-                    logs = data.logs ?? [];
-                    logsSeen = logs.length;
-                    jobStatus = 'running';
-                    startPolling(action, importPeriodeId, importLang);
-                    return;
+                    importViewState.logs = data.logs ?? [];
+                    importViewState.logsSeen = importViewState.logs.length;
+                    importViewState.jobStatus = 'running';
+                    startPolling(action, importViewState.importPeriodeId, importViewState.importLang);
+                    return true;
                 }
             } catch {
                 // ignore
             }
         }
-        logs = [];
-        logsSeen = 0;
-        jobStatus = 'idle';
-        currentAction = null;
+        return false;
     }
 
+    // Called when the semester/lang selection genuinely changes — that's a
+    // real context switch, so the console/status should reset before
+    // checking whether a job happens to be running for the newly selected
+    // combo.
+    async function checkForRunningJob() {
+        stopPolling();
+        importViewState.logs = [];
+        importViewState.logsSeen = 0;
+        importViewState.jobStatus = 'idle';
+        importViewState.currentAction = null;
+        await detectRunningJob();
+    }
+
+    let mountedOnce = false;
     $effect(() => {
-        importPeriodeId; importLang;
-        checkForRunningJob();
+        const key = `${importViewState.importPeriodeId}:${importViewState.importLang}`;
+        const isNewContext = key !== importViewState.contextKey;
+        importViewState.contextKey = key;
+
+        if (isNewContext) {
+            checkForRunningJob();
+        } else if (!mountedOnce) {
+            // First effect run for this component instance, but same
+            // context as before — this is a remount (tab switch back, or a
+            // page reload), not a real change. Reconcile with the server
+            // without discarding whatever we already have locally.
+            detectRunningJob();
+        }
+        mountedOnce = true;
     });
 
     $effect(() => {
@@ -176,7 +192,7 @@
                 .then((data: SemesterOption[]) => {
                     if (Array.isArray(data) && data.length > 0) {
                         availableSemesters.splice(0, availableSemesters.length, ...data);
-                        if (importPeriodeId === 'default') importPeriodeId = data[0].periodeId;
+                        if (importViewState.importPeriodeId === 'default') importViewState.importPeriodeId = data[0].periodeId;
                     }
                 })
                 .catch(() => {});
@@ -208,25 +224,25 @@
     }
 
     async function handleCancelImport() {
-        if (!currentAction) return;
+        if (!importViewState.currentAction) return;
         try {
             const res = await fetch('/api/import/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: currentAction, periodeId: importPeriodeId, lang: importLang })
+                body: JSON.stringify({ action: importViewState.currentAction, periodeId: importViewState.importPeriodeId, lang: importViewState.importLang })
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                logs = [...logs, `Fehler beim Abbrechen: ${err.error ?? res.statusText}`];
+                importViewState.logs = [...importViewState.logs, `Fehler beim Abbrechen: ${err.error ?? res.statusText}`];
                 return;
             }
-            logs = [...logs, 'Abgebrochen — Daten gelöscht.'];
+            importViewState.logs = [...importViewState.logs, 'Abgebrochen — Daten gelöscht.'];
         } catch (err: any) {
-            logs = [...logs, `Fehler beim Abbrechen: ${err?.message ?? err}`];
+            importViewState.logs = [...importViewState.logs, `Fehler beim Abbrechen: ${err?.message ?? err}`];
         } finally {
             stopPolling();
-            jobStatus = 'idle';
-            currentAction = null;
+            importViewState.jobStatus = 'idle';
+            importViewState.currentAction = null;
             await loadStatus();
         }
     }
@@ -251,21 +267,23 @@
         <div class="h-8 w-px bg-slate-200"></div>
 
         <div class="flex flex-col gap-1">
-            <label class="text-xs font-medium text-slate-500 uppercase tracking-wide">Semester</label>
+            <label for="import-semester" class="text-xs font-medium text-slate-500 uppercase tracking-wide">Semester</label>
             {#if availableSemesters.length > 0}
                 <select
-                    bind:value={importPeriodeId}
+                    id="import-semester"
+                    bind:value={importViewState.importPeriodeId}
                     class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
                 >
                     {#each availableSemesters as s}
                         <option value={s.periodeId}>
-                            {importLang === 'de' ? s.label_de : s.label_en}
+                            {importViewState.importLang === 'de' ? s.label_de : s.label_en}
                         </option>
                     {/each}
                 </select>
             {:else}
                 <select
-                    bind:value={importPeriodeId}
+                    id="import-semester"
+                    bind:value={importViewState.importPeriodeId}
                     class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-sm"
                 >
                     <option value="default">— Erst "Fetch Semesters" klicken —</option>
@@ -274,9 +292,10 @@
         </div>
 
         <div class="flex flex-col gap-1">
-            <label class="text-xs font-medium text-slate-500 uppercase tracking-wide">Sprache</label>
+            <label for="import-lang" class="text-xs font-medium text-slate-500 uppercase tracking-wide">Sprache</label>
             <select
-                bind:value={importLang}
+                id="import-lang"
+                bind:value={importViewState.importLang}
                 class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             >
                 <option value="de">Deutsch</option>
@@ -285,7 +304,7 @@
         </div>
 
         <div class="ml-auto flex gap-3">
-            {#if jobStatus === 'running'}
+            {#if importViewState.jobStatus === 'running'}
                 <button
                     onclick={handleCancelImport}
                     class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
@@ -294,21 +313,21 @@
                 </button>
             {/if}
             <button
-                disabled={jobStatus === 'running' || importPeriodeId === 'default'}
+                disabled={importViewState.jobStatus === 'running' || importViewState.importPeriodeId === 'default'}
                 onclick={() => runImport('catalogue')}
                 class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-                {#if jobStatus === 'running' && currentAction === 'catalogue'}
+                {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'catalogue'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 Import Catalogue
             </button>
             <button
-                disabled={jobStatus === 'running' || importPeriodeId === 'default'}
+                disabled={importViewState.jobStatus === 'running' || importViewState.importPeriodeId === 'default'}
                 onclick={() => runImport('lectures')}
                 class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
-                {#if jobStatus === 'running' && currentAction === 'lectures'}
+                {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'lectures'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 Import All Lectures
@@ -401,20 +420,20 @@
             <div class="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
             <div class="h-2.5 w-2.5 rounded-full bg-green-500"></div>
             <span class="ml-2 text-xs text-slate-500 font-mono">Import Log</span>
-            {#if jobStatus === 'running'}
+            {#if importViewState.jobStatus === 'running'}
                 <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
                     <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> läuft…
                 </span>
             {/if}
-            {#if importPeriodeId !== 'default'}
-                <span class="ml-auto text-xs text-slate-600 font-mono">{importPeriodeId}_{importLang}.db</span>
+            {#if importViewState.importPeriodeId !== 'default'}
+                <span class="ml-auto text-xs text-slate-600 font-mono">{importViewState.importPeriodeId}_{importViewState.importLang}.db</span>
             {/if}
         </div>
         <div class="flex-1 overflow-y-auto p-4 font-mono text-sm">
-            {#if logs.length === 0}
+            {#if importViewState.logs.length === 0}
                 <p class="text-slate-600">Bereit. Klicke "Fetch Semesters" und dann einen Import-Button.</p>
             {:else}
-                {#each logs as log}
+                {#each importViewState.logs as log}
                     <p class="leading-6
                         {log.startsWith('✓') ? 'text-emerald-400' : log.startsWith('✗') || log.startsWith('Fehler') ? 'text-red-400' : 'text-slate-300'}
                     ">{log}</p>
