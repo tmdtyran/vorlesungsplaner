@@ -86,6 +86,12 @@
 
     let refreshing = $state(false);
 
+    // Tracks which lecture/language combination is currently loaded into
+    // `full`, so the $effect below only refetches when either actually
+    // changes (not on every unrelated re-render).
+    let lastLoadedUnibasId: number | null = null;
+    let lastLoadedLang: string | null = null;
+
     async function handleRefresh() {
         if (!full || refreshing) return;
         refreshing = true;
@@ -106,6 +112,8 @@
     }
 
     async function loadByUnibasId(unibasId: number) {
+        lastLoadedUnibasId = unibasId;
+        lastLoadedLang = activeSemester.lang;
         loading = true;
         errorMsg = null;
         full = null;
@@ -147,6 +155,8 @@
             activeSubTab = 'description';
             if (full?.unibasId) {
                 nav.detailsUnibasId = full.unibasId;
+                lastLoadedUnibasId = full.unibasId;
+                lastLoadedLang = activeSemester.lang;
                 await loadSupportingData(full.unibasId);
             }
         } catch (err: any) {
@@ -175,10 +185,16 @@
 
     // Arriving via the "Weiteres" button from Kursauswahl — that flow knows
     // the internal unibas_id already, so it loads directly by ID and then
-    // syncs the visible field to the matching course number.
+    // syncs the visible field to the matching course number. Also re-runs
+    // when the language switcher changes while a lecture stays open (the
+    // details page intentionally keeps showing the same lecture across tab
+    // switches), so the fetched content itself — not just the labels — is
+    // reloaded in the newly selected language.
     $effect(() => {
-        if (nav.detailsUnibasId !== null && nav.detailsUnibasId !== full?.unibasId) {
-            loadByUnibasId(nav.detailsUnibasId);
+        const id = nav.detailsUnibasId;
+        const lang = activeSemester.lang;
+        if (id !== null && (id !== lastLoadedUnibasId || lang !== lastLoadedLang)) {
+            loadByUnibasId(id);
         }
     });
 </script>

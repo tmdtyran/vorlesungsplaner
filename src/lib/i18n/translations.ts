@@ -167,16 +167,30 @@ const dict: Record<string, string> = {
     'nicht gefunden.': 'not found.',
 };
 
+// A few buttons/labels in the Import tab are authored in English in the
+// source (they're technical action names), but should still flip to
+// German when the switcher is set to 'de'. This is the reverse direction
+// of `dict` above.
+const enToDe: Record<string, string> = {
+    'Fetch Semesters': 'Semester abrufen',
+    'Import Catalogue': 'Katalog importieren',
+    'Import All Lectures': 'Alle Vorlesungen importieren',
+};
+
 /**
- * Translate a German UI string to English when the active language is
- * 'en'; otherwise return it unchanged. Reactive: re-evaluates whenever
- * activeSemester.lang changes because it's read inside the function body
- * (Svelte 5 tracks the dependency wherever it's called from a $derived /
- * template expression).
+ * Translate a UI string to the active language.
+ * - Keys are normally the German source string: when the active language
+ *   is 'en', they're looked up in `dict` (German -> English).
+ * - A few keys are authored in English (see `enToDe`): when the active
+ *   language is 'de', they're looked up there instead (English -> German).
+ * In every other case the key itself is returned unchanged.
+ * Reactive: re-evaluates whenever activeSemester.lang changes because
+ * it's read inside the function body (Svelte 5 tracks the dependency
+ * wherever it's called from a $derived / template expression).
  */
 export function t(key: string): string {
     if (activeSemester.lang === 'en') {
         return dict[key] ?? key;
     }
-    return key;
+    return enToDe[key] ?? key;
 }

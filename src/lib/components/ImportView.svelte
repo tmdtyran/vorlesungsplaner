@@ -262,7 +262,7 @@
             {:else}
                 <span>🌐</span>
             {/if}
-            Fetch Semesters
+            {t('Fetch Semesters')}
         </button>
 
         <div class="h-8 w-px bg-slate-200"></div>
@@ -321,7 +321,7 @@
                 {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'catalogue'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
-                Import Catalogue
+                {t('Import Catalogue')}
             </button>
             <button
                 disabled={importViewState.jobStatus === 'running' || importViewState.importPeriodeId === 'default'}
@@ -331,7 +331,7 @@
                 {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'lectures'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
-                Import All Lectures
+                {t('Import All Lectures')}
             </button>
         </div>
     </div>
