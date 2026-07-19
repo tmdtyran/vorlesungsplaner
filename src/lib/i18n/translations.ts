@@ -162,6 +162,20 @@ const dict: Record<string, string> = {
     'Freitag': 'Friday',
     'Samstag': 'Saturday',
     'Sonntag': 'Sunday',
+    // Recurrence/frequency terms as scraped verbatim from the source page's
+    // schedule table (e.g. "wöchentlich Montag 16:15-18:00"). These are
+    // translated client-side as a fallback for lectures where only the DE
+    // details were imported, so the calendar/details view still reads
+    // naturally when the switcher is set to 'en'.
+    'wöchentlich': 'weekly',
+    'zweiwöchentlich': 'biweekly',
+    '14-täglich': 'biweekly',
+    'monatlich': 'monthly',
+    'täglich': 'daily',
+    'einmalig': 'one-time',
+    'Einzeltermin': 'single date',
+    'unregelmässig': 'irregular',
+    'nach Vereinbarung': 'by arrangement',
     'Keine Vorlesung mit Kursnummer': 'No lecture found with course number',
     'gefunden.': 'found.',
     'nicht gefunden.': 'not found.',
@@ -176,6 +190,43 @@ const enToDe: Record<string, string> = {
     'Import Catalogue': 'Katalog importieren',
     'Import All Lectures': 'Alle Vorlesungen importieren',
 };
+
+// Free-text schedule strings (e.g. "wöchentlich Montag 16:15-18:00", built
+// server-side from frequency + weekday + time) can't be looked up as a
+// whole — translate word-by-word instead, replacing only the recurrence/
+// weekday terms and leaving times/rooms untouched.
+const scheduleTerms: Record<string, string> = {
+    'wöchentlich': 'weekly',
+    'zweiwöchentlich': 'biweekly',
+    '14-täglich': 'biweekly',
+    'monatlich': 'monthly',
+    'täglich': 'daily',
+    'einmalig': 'one-time',
+    'Einzeltermin': 'single date',
+    'unregelmässig': 'irregular',
+    'Montag': 'Monday',
+    'Dienstag': 'Tuesday',
+    'Mittwoch': 'Wednesday',
+    'Donnerstag': 'Thursday',
+    'Freitag': 'Friday',
+    'Samstag': 'Saturday',
+    'Sonntag': 'Sunday',
+};
+const scheduleTermsPattern = new RegExp(
+    Object.keys(scheduleTerms).sort((a, b) => b.length - a.length).join('|'),
+    'g'
+);
+
+/**
+ * Translate a free-text schedule string (frequency + weekday + time,
+ * concatenated server-side) by swapping out known German recurrence and
+ * weekday words when the active language is 'en'. Everything else in the
+ * string (times, rooms) is left untouched.
+ */
+export function tSchedule(text: string): string {
+    if (activeSemester.lang !== 'en' || !text) return text;
+    return text.replace(scheduleTermsPattern, match => scheduleTerms[match] ?? match);
+}
 
 /**
  * Translate a UI string to the active language.

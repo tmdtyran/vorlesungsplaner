@@ -380,7 +380,7 @@
                             <div class="flex flex-wrap gap-2">
                                 {#each full.datesAndRooms.pattern as p}
                                     <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 text-xs text-indigo-700 font-medium">
-                                        {p.frequency} {p.weekday} {p.time}{p.room ? ` · ${p.room}` : ''}
+                                        {t(p.frequency)} {t(p.weekday)} {p.time}{p.room ? ` · ${p.room}` : ''}
                                     </span>
                                 {/each}
                             </div>

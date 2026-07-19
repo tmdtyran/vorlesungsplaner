@@ -6,7 +6,7 @@
     import { lectureViewState, lectureCache } from '$lib/stores/lectureViewState.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
-    import { t } from '$lib/i18n/translations';
+    import { t, tSchedule } from '$lib/i18n/translations';
 
     // --- Virtualization ---------------------------------------------------
     // Both lists can have thousands of rows (esp. hierarchy mode, which
@@ -325,7 +325,7 @@
                                     </p>
                                 {/if}
                                 {#if lecture.schedule}
-                                    <p class="text-xs text-indigo-500 truncate">🕐 {lecture.schedule}</p>
+                                    <p class="text-xs text-indigo-500 truncate">🕐 {tSchedule(lecture.schedule)}</p>
                                 {/if}
                             </div>
                             {#if lecture.credits}
@@ -401,7 +401,7 @@
                                     </p>
                                 {/if}
                                 {#if isLeaf && lecture.schedule}
-                                    <p class="text-xs text-indigo-500 truncate">🕐 {lecture.schedule}</p>
+                                    <p class="text-xs text-indigo-500 truncate">🕐 {tSchedule(lecture.schedule)}</p>
                                 {/if}
                             </div>
                             {#if lecture.credits}

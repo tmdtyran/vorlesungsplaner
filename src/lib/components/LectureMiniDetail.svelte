@@ -72,7 +72,7 @@
                 <div class="flex flex-wrap gap-2">
                     {#each detail.recurringTimes as rt}
                         <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2 py-1 text-xs text-indigo-700 font-medium">
-                            {rt.frequency ? `${rt.frequency} ` : ''}{rt.weekday} {rt.start_time}–{rt.end_time}
+                            {rt.frequency ? `${t(rt.frequency)} ` : ''}{t(rt.weekday)} {rt.start_time}–{rt.end_time}
                         </span>
                     {/each}
                 </div>
