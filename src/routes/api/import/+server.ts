@@ -97,7 +97,7 @@ async function runCatalogueImport(periodeId: string, lang: string, log: (msg: st
             .replace(/&#39;/g, "'");
 
         const headerMatch = decoded.match(
-            /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*KP\)/
+            /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:KP|CP)\)/
         );
         if (!headerMatch) return null;
 
