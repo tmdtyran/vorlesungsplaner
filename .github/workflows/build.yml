@@ -24,13 +24,16 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
+      
       - uses: oven-sh/setup-bun@v2
-
+      
       - run: bun install --frozen-lockfile
-
+      
+      - run: bunx neu update
+        working-directory: neutralino
+      
       - run: bun run build:desktop
-
+      
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
