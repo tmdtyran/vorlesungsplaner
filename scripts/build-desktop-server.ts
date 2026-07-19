@@ -43,11 +43,34 @@ import { mkdir, cp, rm } from "node:fs/promises";
 const OUT_DIR = "neutralino/server";
 const ENV_JS_PATH = "build/env.js";
 
-const targets = [
-    { bunTarget: "bun-windows-x64", dir: "win-x64", binaryName: "vorlesungsplaner.exe" },
-    { bunTarget: "bun-linux-x64", dir: "linux-x64", binaryName: "vorlesungsplaner" },
-    { bunTarget: "bun-darwin-x64", dir: "mac-x64", binaryName: "vorlesungsplaner" }
-];
+const targets =
+    process.platform === "win32"
+        ? [
+              {
+                  bunTarget: "bun-windows-x64",
+                  dir: "win-x64",
+                  binaryName: "vorlesungsplaner.exe"
+              }
+          ]
+        : process.platform === "linux"
+        ? [
+              {
+                  bunTarget: "bun-linux-x64",
+                  dir: "linux-x64",
+                  binaryName: "vorlesungsplaner"
+              }
+          ]
+        : process.platform === "darwin"
+        ? [
+              {
+                  bunTarget: "bun-darwin-arm64",
+                  dir: "mac-arm64",
+                  binaryName: "vorlesungsplaner"
+              }
+          ]
+        : (() => {
+              throw new Error(`Unsupported platform: ${process.platform}`);
+          })();
 
 /**
  * Patcht die generierte build/env.js so, dass `dir` (Basis für den
