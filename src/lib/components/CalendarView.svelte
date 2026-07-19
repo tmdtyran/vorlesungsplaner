@@ -4,6 +4,7 @@
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
+    import { t } from '$lib/i18n/translations';
 
     let selectedDetail = $state<LectureDetail | null>(null);
 
@@ -17,7 +18,9 @@
         }
     }
 
-    const DAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+    const DAYS_DE = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+    const DAYS_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const DAYS = $derived(activeSemester.lang === 'en' ? DAYS_EN : DAYS_DE);
 
     const DAY_MAP: Record<string, number> = {
         'Mo': 0, 'Di': 1, 'Mi': 2, 'Do': 3, 'Fr': 4,
@@ -132,7 +135,7 @@
         })
     );
     const weekRangeLabel = $derived(
-        `KW ${currentWeek} — ${formatDateShort(weekDates[0])} bis ${formatDateShort(weekDates[4])}`
+        `${t('KW')} ${currentWeek} — ${formatDateShort(weekDates[0])} ${t('bis')} ${formatDateShort(weekDates[4])}`
     );
 
     function goToPrevWeek() {
@@ -461,12 +464,12 @@
                 onclick={() => viewMode = 'typical'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
                     {viewMode === 'typical' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-            >Typische Woche</button>
+            >{t('Typische Woche')}</button>
             <button
                 onclick={() => viewMode = 'specific'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
                     {viewMode === 'specific' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-            >Spezifische Woche</button>
+            >{t('Spezifische Woche')}</button>
         </div>
 
         {#if viewMode === 'specific'}
@@ -474,7 +477,7 @@
                 <button onclick={goToPrevWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">‹</button>
                 <span class="text-xs font-medium text-slate-700 whitespace-nowrap">{weekRangeLabel}</span>
                 <button onclick={goToNextWeek} class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50">›</button>
-                <button onclick={goToCurrentWeek} class="text-xs text-indigo-600 hover:underline whitespace-nowrap">Heute</button>
+                <button onclick={goToCurrentWeek} class="text-xs text-indigo-600 hover:underline whitespace-nowrap">{t('Heute')}</button>
             </div>
         {/if}
 
@@ -483,7 +486,7 @@
             disabled={visibleLectures.length === 0}
             class="ml-auto flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-            📤 ICS exportieren
+            {t('📤 ICS exportieren')}
         </button>
     </div>
 
@@ -493,13 +496,13 @@
         {#if selectedLectures.length === 0}
             <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                 <span class="text-4xl">📅</span>
-                <p class="text-sm">Keine Vorlesungen ausgewählt. Wähle zuerst Vorlesungen in der Kursauswahl.</p>
+                <p class="text-sm">{t('Keine Vorlesungen ausgewählt. Wähle zuerst Vorlesungen in der Kursauswahl.')}</p>
             </div>
         {:else}
             {#if visibleLectures.length === 0}
                 <div class="flex flex-1 flex-col items-center justify-center gap-3 text-slate-400">
                     <span class="text-4xl">📅</span>
-                    <p class="text-sm">Keine Vorlesung im Kalender sichtbar — aktiviere eine in "Meine Auswahl" oder blende sie in der Legende unten wieder ein.</p>
+                    <p class="text-sm">{t('Keine Vorlesung im Kalender sichtbar — aktiviere eine in "Meine Auswahl" oder blende sie in der Legende unten wieder ein.')}</p>
                 </div>
             {:else}
             <div class="flex-1 overflow-auto">
@@ -539,7 +542,7 @@
                                 {/each}
 
                                 {#if dayEvents.length === 0 && viewMode === 'specific'}
-                                    <div class="absolute inset-0 flex items-center justify-center text-[11px] text-slate-300">frei</div>
+                                    <div class="absolute inset-0 flex items-center justify-center text-[11px] text-slate-300">{t('frei')}</div>
                                 {/if}
 
                                 {#each assignColumns(dayEvents) as { ev, totalCols, colIndex }}
@@ -584,7 +587,7 @@
                     <button
                         onclick={() => toggleCalendarHidden(sel.catalog.unibas_id)}
                         class="flex items-center gap-1.5 text-xs transition-opacity {!sel.calendarHidden ? 'text-slate-700' : 'text-slate-400 opacity-50'}"
-                        title={!sel.calendarHidden ? 'Im Kalender ausblenden' : 'Im Kalender anzeigen'}
+                        title={!sel.calendarHidden ? t('Im Kalender ausblenden') : t('Im Kalender anzeigen')}
                     >
                         <span class="h-3 w-3 rounded-sm border-2 flex items-center justify-center shrink-0
                             {!sel.calendarHidden ? c.dot + ' border-transparent' : 'border-slate-300 bg-white'}">

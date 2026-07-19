@@ -7,14 +7,15 @@
     import { selectedLectures, loadSelectionsForSemester } from '$lib/stores/selectedLectures.svelte';
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
     import { nav, setActiveTab, type Tab } from '$lib/stores/navigation.svelte';
+    import { t } from '$lib/i18n/translations';
 
-    const tabs: { id: Tab; label: string; icon: string }[] = [
-        { id: 'import',    label: 'Import',      icon: '⬇' },
-        { id: 'lectures',  label: 'Kursauswahl', icon: '📚' },
-        { id: 'details',   label: 'Details',     icon: '📄' },
-        { id: 'calendar',  label: 'Kalender',    icon: '📅' },
-        { id: 'modules',   label: 'Module & KP', icon: '🎓' },
-    ];
+    const tabs: { id: Tab; label: string; icon: string }[] = $derived([
+        { id: 'import',    label: 'Import',            icon: '⬇' },
+        { id: 'lectures',  label: t('Kursauswahl'),    icon: '📚' },
+        { id: 'details',   label: 'Details',           icon: '📄' },
+        { id: 'calendar',  label: t('Kalender'),       icon: '📅' },
+        { id: 'modules',   label: t('Module & KP'),    icon: '🎓' },
+    ]);
 
     // Load cached semester list on mount
     $effect(() => {
@@ -49,7 +50,7 @@
     const activeLabel = $derived(
         availableSemesters.length > 0
             ? getLabel(availableSemesters.find(s => s.periodeId === activeSemester.periodeId) ?? availableSemesters[0], activeSemester.lang)
-            : activeSemester.periodeId === 'default' ? '— kein Semester —' : activeSemester.periodeId
+            : activeSemester.periodeId === 'default' ? t('— kein Semester —') : activeSemester.periodeId
     );
 </script>
 
@@ -85,7 +86,7 @@
 
         <!-- Semester & Language selector (top-right) -->
         <div class="ml-auto flex items-center gap-2 shrink-0">
-            <span class="text-xs text-slate-400 hidden sm:block">Aktiv:</span>
+            <span class="text-xs text-slate-400 hidden sm:block">{t('Aktiv:')}</span>
 
             {#if availableSemesters.length > 0}
                 <select
@@ -101,7 +102,7 @@
                 </select>
             {:else}
                 <span class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-400">
-                    — Import → Fetch Semesters —
+                    {t('— Import → Fetch Semesters —')}
                 </span>
             {/if}
 

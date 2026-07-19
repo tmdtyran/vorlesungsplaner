@@ -3,6 +3,7 @@
     import { goToDetails, nav, setSelectedPanelExpanded } from '$lib/stores/navigation.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import type { CatalogEntry } from '$lib/types/lecture';
+    import { t } from '$lib/i18n/translations';
 
     interface Props {
         onSelect?: (catalog: CatalogEntry) => void;
@@ -76,24 +77,24 @@
 {#if nav.selectedPanelExpanded}
     <div class="flex flex-col w-72 shrink-0 border-l border-slate-200">
         <div class="flex items-center gap-2 border-b border-slate-200 px-4 py-2 bg-slate-50">
-            <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Meine Auswahl</span>
+            <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('Meine Auswahl')}</span>
             <span class="rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">{activeCount}/{selectedLectures.length}</span>
             <button
                 onclick={handleCopyIds}
                 disabled={selectedLectures.length === 0}
                 class="ml-auto text-slate-400 hover:text-slate-600 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Vorlesungs-IDs kopieren"
+                title={t("Vorlesungs-IDs kopieren")}
             >{copied ? '✓' : '⧉'}</button>
             <button
                 onclick={handleOpenAllInVvz}
                 disabled={selectedLectures.length === 0}
                 class="text-slate-400 hover:text-slate-600 text-xs disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Alle im Vorlesungsverzeichnis öffnen"
+                title={t("Alle im Vorlesungsverzeichnis öffnen")}
             >↗</button>
             <button
                 onclick={() => setSelectedPanelExpanded(false)}
                 class="text-slate-400 hover:text-slate-600 text-sm"
-                title="Einklappen"
+                title={t("Einklappen")}
             >✕</button>
         </div>
         <div class="flex items-center gap-2 border-b border-slate-200 px-3 py-2 bg-white">
@@ -101,7 +102,7 @@
                 <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
                 <input
                     bind:value={search}
-                    placeholder="Suchen..."
+                    placeholder={t("Suchen...")}
                     class="w-full rounded-lg border border-slate-200 pl-7 pr-2 py-1 text-xs focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
                 />
             </div>
@@ -110,11 +111,11 @@
             {#if selectedLectures.length === 0}
                 <div class="flex flex-col items-center justify-center h-32 text-slate-400 text-xs px-4 text-center gap-2">
                     <span class="text-2xl">📋</span>
-                    Noch keine Vorlesungen ausgewählt.
+                    {t('Noch keine Vorlesungen ausgewählt.')}
                 </div>
             {:else if filteredLectures.length === 0}
                 <div class="flex flex-col items-center justify-center h-32 text-slate-400 text-xs px-4 text-center gap-2">
-                    Keine Treffer.
+                    {t('Keine Treffer.')}
                 </div>
             {:else}
                 {#each filteredLectures as sel (sel.catalog.unibas_id)}
@@ -130,7 +131,7 @@
                             checked={sel.active}
                             onclick={(e) => handleToggleActive(sel.catalog.unibas_id, e)}
                             class="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 accent-indigo-600 cursor-pointer"
-                            title="Im Kalender anzeigen / bei Module & KP berücksichtigen"
+                            title={t("Im Kalender anzeigen / bei Module & KP berücksichtigen")}
                         />
                         <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-1.5 flex-wrap">
@@ -147,25 +148,25 @@
                         </div>
                         {#if sel.catalog.credits}
                             <span class="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                                {sel.catalog.credits} KP
+                                {sel.catalog.credits} {t('KP')}
                             </span>
                         {/if}
                         <div class="flex flex-col gap-1 shrink-0">
                             <button
                                 onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
                                 class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
-                                title="Entfernen"
+                                title={t("Entfernen")}
                             >−</button>
                             <div class="flex gap-1">
                                 <button
                                     onclick={(e) => handleOpenVvz(sel.catalog.unibas_id, e)}
                                     class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500 text-xs transition-opacity hover:bg-slate-200 hover:text-slate-700"
-                                    title="Im Vorlesungsverzeichnis öffnen"
+                                    title={t("Im Vorlesungsverzeichnis öffnen")}
                                 >↗</button>
                                 <button
                                     onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
                                     class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
-                                    title="Im Details-Tab öffnen"
+                                    title={t("Im Details-Tab öffnen")}
                                 >→</button>
                             </div>
                         </div>
@@ -178,10 +179,10 @@
     <button
         onclick={() => setSelectedPanelExpanded(true)}
         class="flex shrink-0 flex-col items-center gap-1 border-l border-slate-200 bg-slate-50 px-2 py-4 text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-        title="Meine Auswahl anzeigen"
+        title={t("Meine Auswahl anzeigen")}
     >
         <span class="text-sm">☰</span>
         <span class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700">{activeCount}</span>
-        <span class="text-[10px] font-semibold uppercase tracking-wide" style="writing-mode: vertical-rl;">Auswahl</span>
+        <span class="text-[10px] font-semibold uppercase tracking-wide" style="writing-mode: vertical-rl;">{t('Auswahl')}</span>
     </button>
 {/if}

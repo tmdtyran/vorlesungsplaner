@@ -6,6 +6,7 @@
     import { lectureViewState, lectureCache } from '$lib/stores/lectureViewState.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
+    import { t } from '$lib/i18n/translations';
 
     // --- Virtualization ---------------------------------------------------
     // Both lists can have thousands of rows (esp. hierarchy mode, which
@@ -257,26 +258,26 @@
                 onclick={() => lectureViewState.viewMode = 'flat'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
                     {lectureViewState.viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-            >≡ Liste</button>
+            >≡ {t('Liste')}</button>
             <button
                 onclick={() => lectureViewState.viewMode = 'hierarchy'}
                 class="px-3 py-1.5 text-xs font-medium transition-colors
                     {lectureViewState.viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}"
-            >⊞ Hierarchie</button>
+            >⊞ {t('Hierarchie')}</button>
         </div>
         <div class="relative flex-1 max-w-sm">
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
                 bind:value={lectureViewState.searchLeft}
-                placeholder="Vorlesungen suchen..."
+                placeholder={t('Vorlesungen suchen...')}
                 class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
         </div>
         {#if loading}
-            <span class="text-xs text-slate-400">Laden…</span>
+            <span class="text-xs text-slate-400">{t('Laden…')}</span>
         {:else}
             <span class="text-xs text-slate-400">
-                {lectureViewState.viewMode === 'hierarchy' ? hierarchyLectureCount : filteredLeft.length} Vorlesungen
+                {lectureViewState.viewMode === 'hierarchy' ? hierarchyLectureCount : filteredLeft.length} {t('Vorlesungen')}
             </span>
         {/if}
     </div>
@@ -292,9 +293,9 @@
                 class="flex-1 overflow-y-auto"
             >
                 {#if loading}
-                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Lädt…</div>
+                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">{t('Lädt…')}</div>
                 {:else if lectureViewState.viewMode === 'hierarchy' ? hierarchyFlatList.length === 0 : filteredLeft.length === 0}
-                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">Keine Vorlesungen gefunden</div>
+                    <div class="flex items-center justify-center h-32 text-slate-400 text-sm">{t('Keine Vorlesungen gefunden')}</div>
                 {:else if lectureViewState.viewMode === 'flat'}
                     {#if virtualFlat.topPadding > 0}
                         <div style="height: {virtualFlat.topPadding}px"></div>
@@ -329,27 +330,27 @@
                             </div>
                             {#if lecture.credits}
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                                    {lecture.credits} KP
+                                    {lecture.credits} {t('KP')}
                                 </span>
                             {/if}
                             {#if lecture.unibas_id}
                                 <button
                                     onclick={(e) => { e.stopPropagation(); goToDetails(lecture.unibas_id!); }}
                                     class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 text-sm transition-opacity hover:bg-slate-100 hover:text-slate-700"
-                                    title="Details anzeigen"
+                                    title={t("Details anzeigen")}
                                 >→</button>
                             {/if}
                             {#if !selected}
                                 <button
                                     onclick={(e) => handleAdd(lecture, e)}
                                     class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-white text-sm font-bold transition-opacity hover:bg-indigo-700"
-                                    title="Zur Liste hinzufügen"
+                                    title={t("Zur Liste hinzufügen")}
                                 >+</button>
                             {:else}
                                 <button
                                     onclick={(e) => handleRemove(lecture.unibas_id, e)}
                                     class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs transition-colors hover:bg-red-100 hover:text-red-600"
-                                    title="Aus Auswahl entfernen"
+                                    title={t("Aus Auswahl entfernen")}
                                 >
                                     <span class="group-hover:hidden">✓</span>
                                     <span class="hidden group-hover:inline">−</span>
@@ -405,14 +406,14 @@
                             </div>
                             {#if lecture.credits}
                                 <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                                    {lecture.credits} KP
+                                    {lecture.credits} {t('KP')}
                                 </span>
                             {/if}
                             {#if isLeaf}
                                 <button
                                     onclick={(e) => { e.stopPropagation(); goToDetails(lecture.unibas_id!); }}
                                     class="shrink-0 opacity-0 group-hover:opacity-100 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 text-sm transition-opacity hover:bg-slate-100 hover:text-slate-700"
-                                    title="Details anzeigen"
+                                    title={t("Details anzeigen")}
                                 >→</button>
                             {/if}
                             {#if isLeaf && !selected}
@@ -424,7 +425,7 @@
                                 <button
                                     onclick={(e) => handleRemove(lecture.unibas_id, e)}
                                     class="shrink-0 flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 text-xs transition-colors hover:bg-red-100 hover:text-red-600"
-                                    title="Aus Auswahl entfernen"
+                                    title={t("Aus Auswahl entfernen")}
                                 >
                                     <span class="group-hover:hidden">✓</span>
                                     <span class="hidden group-hover:inline">−</span>

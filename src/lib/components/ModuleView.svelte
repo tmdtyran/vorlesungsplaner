@@ -5,6 +5,7 @@
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import LectureMiniDetail from './LectureMiniDetail.svelte';
     import type { CatalogEntry, LectureDetail } from '$lib/types/lecture';
+    import { t } from '$lib/i18n/translations';
 
     let selectedDetail = $state<LectureDetail | null>(null);
     let selectedCatalog = $state<CatalogEntry | null>(null);
@@ -26,7 +27,7 @@
     function getModules(sel: (typeof selectedLectures)[0]): string[] {
         const mods = sel.detail?.modules ?? [];
         const cleaned = mods.map(m => m.replace(/^modul\s*:\s*/i, ''));
-        return [...cleaned, 'Freie Leistungen'];
+        return [...cleaned, t('Freie Leistungen')];
     }
 
     let search = $state('');
@@ -72,11 +73,11 @@
             <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
             <input
                 bind:value={search}
-                placeholder="Vorlesungen suchen..."
+                placeholder={t("Vorlesungen suchen...")}
                 class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
         </div>
-        <span class="text-xs text-slate-400">{displayedLectures.length} Vorlesungen</span>
+        <span class="text-xs text-slate-400">{displayedLectures.length} {t('Vorlesungen')}</span>
     </div>
 
     <div class="flex flex-1 min-h-0">
@@ -86,8 +87,8 @@
                 <span class="text-4xl">📊</span>
                 <p class="text-sm">
                     {selectedLectures.length === 0
-                        ? 'Keine Vorlesungen ausgewählt.'
-                        : 'Alle ausgewählten Vorlesungen sind in "Meine Auswahl" deaktiviert.'}
+                        ? t('Keine Vorlesungen ausgewählt.')
+                        : t('Alle ausgewählten Vorlesungen sind in "Meine Auswahl" deaktiviert.')}
                 </p>
             </div>
         {:else}
@@ -96,15 +97,15 @@
                     <thead class="sticky top-0 bg-white border-b border-slate-200 z-10">
                         <tr>
                             <th class="w-10 px-4 py-3 text-left"></th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Vorlesung</th>
-                            <th class="w-24 px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide">KP</th>
-                            <th class="w-64 px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Modul</th>
+                            <th class="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('Vorlesung')}</th>
+                            <th class="w-24 px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('KP')}</th>
+                            <th class="w-64 px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('Modul')}</th>
                             <th class="w-10 px-4 py-3"></th>
                         </tr>
                     </thead>
                     <tbody>
                         {#if displayedLectures.length === 0}
-                            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">Keine Vorlesungen gefunden</td></tr>
+                            <tr><td colspan="5" class="px-4 py-6 text-center text-slate-400 text-sm">{t('Keine Vorlesungen gefunden')}</td></tr>
                         {/if}
                         {#each displayedLectures as sel (sel.catalog.unibas_id)}
                             {@const modules = getModules(sel)}
@@ -115,7 +116,7 @@
                                         checked={sel.included}
                                         onchange={() => sel.included = !sel.included}
                                         class="h-4 w-4 rounded border-slate-300 accent-indigo-600 cursor-pointer"
-                                        title="Bei der KP-Berechnung berücksichtigen"
+                                        title={t("Bei der KP-Berechnung berücksichtigen")}
                                     />
                                 </td>
                                 <td class="px-4 py-3">
@@ -154,7 +155,7 @@
                                     <button
                                         onclick={() => sel.catalog.unibas_id && goToDetails(sel.catalog.unibas_id)}
                                         class="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold transition-colors hover:bg-indigo-100"
-                                        title="Im Details-Tab öffnen"
+                                        title={t("Im Details-Tab öffnen")}
                                     >→</button>
                                 </td>
                             </tr>
@@ -167,7 +168,7 @@
             <div class="border-t border-slate-200 bg-slate-50 p-5">
                 <div class="flex gap-6 items-start">
                     <div class="flex-1 min-w-0">
-                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">KP pro Modul</p>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{t('KP pro Modul')}</p>
                         <div class="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
                             {#each moduleCredits() as [mod, credits]}
                                 <div class="flex items-center gap-2 px-3 py-2" title={mod}>
@@ -176,14 +177,14 @@
                                 </div>
                             {/each}
                             {#if moduleCredits().length === 0}
-                                <p class="text-xs text-slate-400 px-3 py-2">Keine eingeschlossenen Vorlesungen.</p>
+                                <p class="text-xs text-slate-400 px-3 py-2">{t('Keine eingeschlossenen Vorlesungen.')}</p>
                             {/if}
                         </div>
                     </div>
                     <div class="ml-auto text-right shrink-0">
-                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Gesamt KP</p>
+                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('Gesamt KP')}</p>
                         <p class="text-3xl font-bold text-indigo-600">{totalCredits}</p>
-                        <p class="text-xs text-slate-400">{visibleLectures.filter(s => s.included).length} von {visibleLectures.length} eingeschlossen</p>
+                        <p class="text-xs text-slate-400">{visibleLectures.filter(s => s.included).length} {t('von')} {visibleLectures.length} {t('eingeschlossen')}</p>
                     </div>
                 </div>
             </div>

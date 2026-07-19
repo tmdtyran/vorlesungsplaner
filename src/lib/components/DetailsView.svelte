@@ -4,6 +4,7 @@
     import { addLecture, removeLecture, isSelected } from '$lib/stores/selectedLectures.svelte';
     import SelectedLecturesPanel from './SelectedLecturesPanel.svelte';
     import type { CatalogEntry, FullLectureDetails, LectureDetail } from '$lib/types/lecture';
+    import { t } from '$lib/i18n/translations';
 
     type SubTab = 'description' | 'admission' | 'dates' | 'modules' | 'assessment';
 
@@ -15,21 +16,22 @@
     let lightDetail = $state<LectureDetail | null>(null);
     let activeSubTab = $state<SubTab>('description');
 
-    const subTabs: { id: SubTab; label: string; icon: string }[] = [
-        { id: 'description', label: 'Beschreibung', icon: 'ℹ️' },
-        { id: 'admission', label: 'Teilnahmevoraussetzungen', icon: '👤' },
-        { id: 'dates', label: 'Termine und Räume', icon: '📅' },
-        { id: 'modules', label: 'Module', icon: '🎓' },
-        { id: 'assessment', label: 'Leistungsüberprüfung', icon: '📝' },
-    ];
+    const subTabs = $derived<{ id: SubTab; label: string; icon: string }[]>([
+        { id: 'description', label: t('Beschreibung'), icon: 'ℹ️' },
+        { id: 'admission', label: t('Teilnahmevoraussetzungen'), icon: '👤' },
+        { id: 'dates', label: t('Termine und Räume'), icon: '📅' },
+        { id: 'modules', label: t('Module'), icon: '🎓' },
+        { id: 'assessment', label: t('Leistungsüberprüfung'), icon: '📝' },
+    ]);
 
     const WEEKDAYS_DE = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+    const WEEKDAYS_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
     // "2026-09-15" -> "Dienstag 15-09-2026"
     function formatDate(iso: string): string {
         const d = new Date(iso + 'T00:00:00');
         if (isNaN(d.getTime())) return iso;
-        const wd = WEEKDAYS_DE[d.getDay()];
+        const wd = (activeSemester.lang === 'en' ? WEEKDAYS_EN : WEEKDAYS_DE)[d.getDay()];
         const dd = String(d.getDate()).padStart(2, '0');
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         return `${wd} ${dd}-${mm}-${d.getFullYear()}`;
@@ -37,7 +39,7 @@
 
     function weekdayOf(iso: string): string {
         const d = new Date(iso + 'T00:00:00');
-        return isNaN(d.getTime()) ? '' : WEEKDAYS_DE[d.getDay()];
+        return isNaN(d.getTime()) ? '' : WEEKDAYS_DE[d.getDay()];  // internal matching only, always DE keys
     }
 
     // Some individual session rows have no per-row time override (shown as
@@ -94,7 +96,7 @@
             );
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                errorMsg = err.error ?? 'Neu laden fehlgeschlagen.';
+                errorMsg = err.error ?? t('Neu laden fehlgeschlagen.');
                 return;
             }
             await loadByUnibasId(full.unibasId);
@@ -113,7 +115,7 @@
             const res = await fetch(`/api/lectures/${unibasId}/full?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                errorMsg = err.error ?? `Vorlesung ${unibasId} nicht gefunden.`;
+                errorMsg = err.error ?? `${t('Vorlesung')} ${unibasId} ${t('nicht gefunden.')}`;
                 loading = false;
                 return;
             }
@@ -137,7 +139,7 @@
             const res = await fetch(`/api/lectures/by-course-number/${encodeURIComponent(courseNumber)}/full?periodeId=${activeSemester.periodeId}&lang=${activeSemester.lang}`);
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                errorMsg = err.error ?? `Keine Vorlesung mit Kursnummer "${courseNumber}" gefunden.`;
+                errorMsg = err.error ?? `${t('Keine Vorlesung mit Kursnummer')} "${courseNumber}" ${t('gefunden.')}`;
                 loading = false;
                 return;
             }
@@ -156,7 +158,7 @@
     function handleSubmit() {
         const cn = courseNumberInput.trim();
         if (!cn) {
-            errorMsg = 'Bitte eine Kursnummer eingeben (z.B. 65935-01).';
+            errorMsg = t('Bitte eine Kursnummer eingeben (z.B. 65935-01).');
             return;
         }
         loadByCourseNumber(cn);
@@ -191,12 +193,12 @@
 
     <!-- Course number input -->
     <div class="flex items-center gap-3 border-b border-slate-200 px-6 py-2 min-h-15">
-        <label for="course-number-input" class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">Kursnummer</label>
+        <label for="course-number-input" class="text-xs font-medium text-slate-500 uppercase tracking-wide shrink-0">{t('Kursnummer')}</label>
         <input
             id="course-number-input"
             bind:value={courseNumberInput}
             onkeydown={(e) => e.key === 'Enter' && handleSubmit()}
-            placeholder="z.B. 65935-01"
+            placeholder={t("z.B. 65935-01")}
             class="w-48 rounded-lg border border-slate-200 px-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
         />
         <button
@@ -207,7 +209,7 @@
             {#if loading}
                 <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
             {/if}
-            Laden
+            {t('Laden')}
         </button>
         {#if full}
             <span class="ml-2 flex items-center gap-2 text-sm text-slate-500 truncate min-w-0">
@@ -220,7 +222,7 @@
                 <span class="font-medium text-slate-700 truncate" title={full.title}>{full.title}</span>
                 {#if full.credits}
                     <span class="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                        {full.credits} KP
+                        {full.credits} {t('KP')}
                     </span>
                 {/if}
             </span>
@@ -228,13 +230,13 @@
                 <button
                     onclick={() => window.open(lectureVvzUrl(full.unibasId), '_blank', 'noopener,noreferrer')}
                     class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
-                    title="Im Vorlesungsverzeichnis öffnen"
+                    title={t("Im Vorlesungsverzeichnis öffnen")}
                 >↗</button>
                 <button
                     onclick={handleRefresh}
                     disabled={refreshing}
                     class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:opacity-40"
-                    title="Diese Vorlesung neu von der Quelle laden"
+                    title={t("Diese Vorlesung neu von der Quelle laden")}
                 >
                     <span class={refreshing ? 'animate-spin inline-block' : ''}>↻</span>
                 </button>
@@ -245,7 +247,7 @@
                         {isSelected(full.unibasId)
                             ? 'bg-emerald-100 text-emerald-600 hover:bg-red-100 hover:text-red-600'
                             : 'bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed'}"
-                    title={isSelected(full.unibasId) ? 'Aus Meine Auswahl entfernen' : 'Zu Meine Auswahl hinzufügen'}
+                    title={isSelected(full.unibasId) ? t('Aus Meine Auswahl entfernen') : t('Zu Meine Auswahl hinzufügen')}
                 >
                     {#if isSelected(full.unibasId)}
                         <span class="group-hover:hidden">✓</span>
@@ -262,7 +264,7 @@
     <div class="flex-1 flex flex-col min-w-0">
 
     {#if loading}
-        <div class="flex flex-1 items-center justify-center text-slate-400 text-sm">Lädt…</div>
+        <div class="flex flex-1 items-center justify-center text-slate-400 text-sm">{t('Lädt…')}</div>
     {:else if errorMsg}
         <div class="flex flex-1 flex-col items-center justify-center gap-2 text-slate-400">
             <span class="text-3xl">🔍</span>
@@ -271,7 +273,7 @@
     {:else if !full}
         <div class="flex flex-1 flex-col items-center justify-center gap-2 text-slate-400">
             <span class="text-3xl">📋</span>
-            <p class="text-sm">Gib eine Kursnummer ein, um alle Details zu sehen.</p>
+            <p class="text-sm">{t('Gib eine Kursnummer ein, um alle Details zu sehen.')}</p>
         </div>
     {:else}
         <!-- Sub-tab bar -->
@@ -295,42 +297,42 @@
             {#if activeSubTab === 'description'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.description.semester}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Semester</span><p class="text-sm text-slate-600">{full.description.semester}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Semester')}</span><p class="text-sm text-slate-600">{full.description.semester}</p></div>
                     {/if}
                     {#if full.description.pattern}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Angebotsmuster</span><p class="text-sm text-slate-600">{full.description.pattern}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Angebotsmuster')}</span><p class="text-sm text-slate-600">{full.description.pattern}</p></div>
                     {/if}
                     {#if full.description.lecturers}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Dozierende</span><p class="text-sm text-slate-600 whitespace-pre-line">{full.description.lecturers}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Dozierende')}</span><p class="text-sm text-slate-600 whitespace-pre-line">{full.description.lecturers}</p></div>
                     {/if}
                     {#if full.description.content}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Inhalt</span>{@render paragraphs(full.description.content)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Inhalt')}</span>{@render paragraphs(full.description.content)}</div>
                     {/if}
                     {#if full.description.learningObjectives}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Lernziele</span>{@render paragraphs(full.description.learningObjectives)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Lernziele')}</span>{@render paragraphs(full.description.learningObjectives)}</div>
                     {/if}
                     {#if full.description.literature}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Literatur</span>{@render paragraphs(full.description.literature)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Literatur')}</span>{@render paragraphs(full.description.literature)}</div>
                     {/if}
                     {#if full.description.weblink}
                         <div>
-                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Weblink</span>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Weblink')}</span>
                             <a href={full.description.weblink} target="_blank" rel="noopener noreferrer" class="text-sm text-indigo-600 hover:underline break-all">{full.description.weblink}</a>
                         </div>
                     {/if}
                     {#if full.description.remarks}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Bemerkungen</span>{@render paragraphs(full.description.remarks)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Bemerkungen')}</span>{@render paragraphs(full.description.remarks)}</div>
                     {/if}
                     {#if !full.description.content && !full.description.learningObjectives && !full.description.literature && !full.description.weblink && !full.description.remarks}
-                        <p class="text-sm text-slate-400">Keine Beschreibung vorhanden.</p>
+                        <p class="text-sm text-slate-400">{t('Keine Beschreibung vorhanden.')}</p>
                     {/if}
                     {#if full.debugRawHtmlSnippet}
                         <details class="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
                             <summary class="text-xs font-semibold text-amber-700 uppercase tracking-wide cursor-pointer">
-                                ⚠ Debug: Rohes HTML (keine Felder erkannt)
+                                {t('⚠ Debug: Rohes HTML (keine Felder erkannt)')}
                             </summary>
                             <p class="text-xs text-amber-700 mt-2 mb-2">
-                                Es konnten keine Label/Wert-Paare auf dieser Seite erkannt werden. Kopiere den Ausschnitt unten und teile ihn, damit der Parser angepasst werden kann.
+                                {t('Es konnten keine Label/Wert-Paare auf dieser Seite erkannt werden. Kopiere den Ausschnitt unten und teile ihn, damit der Parser angepasst werden kann.')}
                             </p>
                             <pre class="text-[10px] text-slate-600 bg-white border border-slate-200 rounded p-2 overflow-x-auto whitespace-pre-wrap max-h-64 overflow-y-auto">{full.debugRawHtmlSnippet}</pre>
                         </details>
@@ -339,26 +341,26 @@
             {:else if activeSubTab === 'admission'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.admissionRequirements.requirements}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Teilnahmevoraussetzungen</span>{@render paragraphs(full.admissionRequirements.requirements)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Teilnahmevoraussetzungen')}</span>{@render paragraphs(full.admissionRequirements.requirements)}</div>
                     {/if}
                     {#if full.admissionRequirements.registration}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anmeldung zur Lehrveranstaltung</span>{@render paragraphs(full.admissionRequirements.registration)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Anmeldung zur Lehrveranstaltung')}</span>{@render paragraphs(full.admissionRequirements.registration)}</div>
                     {/if}
                     {#if full.admissionRequirements.language}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Unterrichtssprache</span><p class="text-sm text-slate-600">{full.admissionRequirements.language}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Unterrichtssprache')}</span><p class="text-sm text-slate-600">{full.admissionRequirements.language}</p></div>
                     {/if}
                     {#if full.admissionRequirements.digitalMedia}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Einsatz digitaler Medien</span><p class="text-sm text-slate-600">{full.admissionRequirements.digitalMedia}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Einsatz digitaler Medien')}</span><p class="text-sm text-slate-600">{full.admissionRequirements.digitalMedia}</p></div>
                     {/if}
                     {#if !full.admissionRequirements.requirements && !full.admissionRequirements.registration}
-                        <p class="text-sm text-slate-400">Keine Angaben vorhanden.</p>
+                        <p class="text-sm text-slate-400">{t('Keine Angaben vorhanden.')}</p>
                     {/if}
                 </div>
             {:else if activeSubTab === 'dates'}
                 <div class="max-w-3xl space-y-6">
                     {#if full.datesAndRooms.pattern.length > 0}
                         <div>
-                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">Regelmässigkeit</span>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">{t('Regelmässigkeit')}</span>
                             <div class="flex flex-wrap gap-2">
                                 {#each full.datesAndRooms.pattern as p}
                                     <span class="rounded-md bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 text-xs text-indigo-700 font-medium">
@@ -370,14 +372,14 @@
                     {/if}
                     {#if full.datesAndRooms.sessions.length > 0}
                         <div>
-                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">Einzeltermine ({full.datesAndRooms.sessions.length})</span>
+                            <span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-2">{t('Einzeltermine')} ({full.datesAndRooms.sessions.length})</span>
                             <div class="rounded-lg border border-slate-200 overflow-hidden">
                                 <table class="w-full text-sm">
                                     <thead class="bg-slate-50 border-b border-slate-200">
                                         <tr>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">Datum</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">Zeit</th>
-                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">Raum</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('Datum')}</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('Zeit')}</th>
+                                            <th class="px-3 py-2 text-left text-xs font-medium text-slate-500">{t('Raum')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -394,7 +396,7 @@
                         </div>
                     {/if}
                     {#if full.datesAndRooms.pattern.length === 0 && full.datesAndRooms.sessions.length === 0}
-                        <p class="text-sm text-slate-400">Keine Termine vorhanden.</p>
+                        <p class="text-sm text-slate-400">{t('Keine Termine vorhanden.')}</p>
                     {/if}
                 </div>
             {:else if activeSubTab === 'modules'}
@@ -406,34 +408,34 @@
                             {/each}
                         </div>
                     {:else}
-                        <p class="text-sm text-slate-400">Keinem Modul zugeordnet.</p>
+                        <p class="text-sm text-slate-400">{t('Keinem Modul zugeordnet.')}</p>
                     {/if}
                 </div>
             {:else if activeSubTab === 'assessment'}
                 <div class="max-w-3xl space-y-4">
                     {#if full.assessment.format}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Prüfung</span><p class="text-sm text-slate-600">{full.assessment.format}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Prüfung')}</span><p class="text-sm text-slate-600">{full.assessment.format}</p></div>
                     {/if}
                     {#if full.assessment.details}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Hinweise zur Prüfung</span>{@render paragraphs(full.assessment.details)}</div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Hinweise zur Prüfung')}</span>{@render paragraphs(full.assessment.details)}</div>
                     {/if}
                     {#if full.assessment.registration}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">An-/Abmeldung zur Prüfung</span><p class="text-sm text-slate-600">{full.assessment.registration}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('An-/Abmeldung zur Prüfung')}</span><p class="text-sm text-slate-600">{full.assessment.registration}</p></div>
                     {/if}
                     {#if full.assessment.retake}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Wiederholungsprüfung</span><p class="text-sm text-slate-600">{full.assessment.retake}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Wiederholungsprüfung')}</span><p class="text-sm text-slate-600">{full.assessment.retake}</p></div>
                     {/if}
                     {#if full.assessment.scale}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Skala</span><p class="text-sm text-slate-600">{full.assessment.scale}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Skala')}</span><p class="text-sm text-slate-600">{full.assessment.scale}</p></div>
                     {/if}
                     {#if full.assessment.retakeOnFail}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Belegen bei Nichtbestehen</span><p class="text-sm text-slate-600">{full.assessment.retakeOnFail}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Belegen bei Nichtbestehen')}</span><p class="text-sm text-slate-600">{full.assessment.retakeOnFail}</p></div>
                     {/if}
                     {#if full.assessment.faculty}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Zuständige Fakultät</span><p class="text-sm text-slate-600">{full.assessment.faculty}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Zuständige Fakultät')}</span><p class="text-sm text-slate-600">{full.assessment.faculty}</p></div>
                     {/if}
                     {#if full.assessment.offeredBy}
-                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">Anbietende Organisationseinheit</span><p class="text-sm text-slate-600">{full.assessment.offeredBy}</p></div>
+                        <div><span class="text-xs font-bold text-slate-800 uppercase tracking-wide block mb-1">{t('Anbietende Organisationseinheit')}</span><p class="text-sm text-slate-600">{full.assessment.offeredBy}</p></div>
                     {/if}
                 </div>
             {/if}

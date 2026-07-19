@@ -1,6 +1,7 @@
 <script lang="ts">
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
     import { importViewState, pollState } from '$lib/stores/importViewState.svelte';
+    import { t } from '$lib/i18n/translations';
 
     interface ImportStatusEntry {
         periodeId: string;
@@ -115,12 +116,12 @@
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                importViewState.logs = [`Fehler: ${err.error ?? response.statusText}`];
+                importViewState.logs = [`${t('Fehler:')} ${err.error ?? response.statusText}`];
                 importViewState.jobStatus = 'error';
                 return;
             }
         } catch (err: any) {
-            importViewState.logs = [`Fehler: ${err?.message ?? err}`];
+            importViewState.logs = [`${t('Fehler:')} ${err?.message ?? err}`];
             importViewState.jobStatus = 'error';
             return;
         }
@@ -205,7 +206,7 @@
         return () => clearInterval(statusInterval);
     });
     async function handleDeleteData(type: 'catalogue' | 'lectures', periodeId: string, lang: string, label: string) {
-        if (!confirm(`"${label}" wirklich löschen? Das kann nicht rückgängig gemacht werden.`)) return;
+        if (!confirm(`"${label}" ${t('wirklich löschen? Das kann nicht rückgängig gemacht werden.')}`)) return;
         try {
             const res = await fetch('/api/import/data', {
                 method: 'POST',
@@ -214,12 +215,12 @@
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                alert(err.error ?? 'Löschen fehlgeschlagen.');
+                alert(err.error ?? t('Löschen fehlgeschlagen.'));
                 return;
             }
             await loadStatus();
         } catch (err: any) {
-            alert(err?.message ?? 'Löschen fehlgeschlagen.');
+            alert(err?.message ?? t('Löschen fehlgeschlagen.'));
         }
     }
 
@@ -233,12 +234,12 @@
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                importViewState.logs = [...importViewState.logs, `Fehler beim Abbrechen: ${err.error ?? res.statusText}`];
+                importViewState.logs = [...importViewState.logs, `${t('Fehler beim Abbrechen:')} ${err.error ?? res.statusText}`];
                 return;
             }
-            importViewState.logs = [...importViewState.logs, 'Abgebrochen — Daten gelöscht.'];
+            importViewState.logs = [...importViewState.logs, t('Abgebrochen — Daten gelöscht.')];
         } catch (err: any) {
-            importViewState.logs = [...importViewState.logs, `Fehler beim Abbrechen: ${err?.message ?? err}`];
+            importViewState.logs = [...importViewState.logs, `${t('Fehler beim Abbrechen:')} ${err?.message ?? err}`];
         } finally {
             stopPolling();
             importViewState.jobStatus = 'idle';
@@ -267,7 +268,7 @@
         <div class="h-8 w-px bg-slate-200"></div>
 
         <div class="flex flex-col gap-1">
-            <label for="import-semester" class="text-xs font-medium text-slate-500 uppercase tracking-wide">Semester</label>
+            <label for="import-semester" class="text-xs font-medium text-slate-500 uppercase tracking-wide">{t('Semester')}</label>
             {#if availableSemesters.length > 0}
                 <select
                     id="import-semester"
@@ -286,20 +287,20 @@
                     bind:value={importViewState.importPeriodeId}
                     class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-500 shadow-sm"
                 >
-                    <option value="default">— Erst "Fetch Semesters" klicken —</option>
+                    <option value="default">{t('— Erst "Fetch Semesters" klicken —')}</option>
                 </select>
             {/if}
         </div>
 
         <div class="flex flex-col gap-1">
-            <label for="import-lang" class="text-xs font-medium text-slate-500 uppercase tracking-wide">Sprache</label>
+            <label for="import-lang" class="text-xs font-medium text-slate-500 uppercase tracking-wide">{t('Sprache')}</label>
             <select
                 id="import-lang"
                 bind:value={importViewState.importLang}
                 class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             >
-                <option value="de">Deutsch</option>
-                <option value="en">Englisch</option>
+                <option value="de">{t('Deutsch')}</option>
+                <option value="en">{t('Englisch')}</option>
             </select>
         </div>
 
@@ -309,7 +310,7 @@
                     onclick={handleCancelImport}
                     class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
                 >
-                    ✕ Abbrechen
+                    ✕ {t('Abbrechen')}
                 </button>
             {/if}
             <button
@@ -339,18 +340,18 @@
     {#if availableSemesters.length > 0}
         <div class="rounded-xl border border-slate-200 overflow-hidden">
             <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2">
-                <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">Import-Status</span>
-                <span class="text-xs text-slate-400">— pro Semester &amp; Sprache</span>
+                <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('Import-Status')}</span>
+                <span class="text-xs text-slate-400">{t('— pro Semester & Sprache')}</span>
             </div>
             <div class="max-h-48 overflow-y-auto">
                 <table class="w-full text-sm">
                     <thead class="sticky top-0 bg-white border-b border-slate-200">
                         <tr>
-                            <th class="px-4 py-2 text-left text-xs font-medium text-slate-500">Semester</th>
-                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">DE Katalog</th>
-                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">DE Details</th>
-                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">EN Katalog</th>
-                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">EN Details</th>
+                            <th class="px-4 py-2 text-left text-xs font-medium text-slate-500">{t('Semester')}</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">{t('DE Katalog')}</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">{t('DE Details')}</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">{t('EN Katalog')}</th>
+                            <th class="px-3 py-2 text-center text-xs font-medium text-slate-500">{t('EN Details')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -360,22 +361,22 @@
                             <tr class="border-b border-slate-100 hover:bg-slate-50">
                                 <td class="px-4 py-2 text-slate-700">{s.label_de}</td>
 
-                                <td class="px-3 py-2 text-center group" title={de?.catalogImportedAt ? `${de.catalogLectureCount} Vorlesungen — ${formatTimestamp(de.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={de?.catalogImportedAt ? `${de.catalogLectureCount} ${t('Vorlesungen')} — ${formatTimestamp(de.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'de') ? t('Import läuft…') : t('Noch nicht importiert'))}>
                                     {#if isJobRunning('catalogue', s.periodeId, 'de')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if de?.catalogImportedAt}
-                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'de', `Katalog DE — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'de', `${t('Katalog DE')} — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title={t("Löschen")}>
                                             <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
                                         </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center group" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'de') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={de?.lecturesImportedAt ? `${de.lecturesSuccessCount}/${de.lecturesTotalCount} — ${formatTimestamp(de.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'de') ? t('Import läuft…') : t('Noch nicht importiert'))}>
                                     {#if isJobRunning('lectures', s.periodeId, 'de')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if de?.lecturesImportedAt}
-                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'de', `Details DE — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'de', `${t('Details DE')} — ${s.label_de}`)} class="text-emerald-600 group-hover:text-red-600" title={t("Löschen")}>
                                             <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
                                         </button>
                                     {:else}
@@ -383,22 +384,22 @@
                                     {/if}
                                 </td>
 
-                                <td class="px-3 py-2 text-center group" title={en?.catalogImportedAt ? `${en.catalogLectureCount} Vorlesungen — ${formatTimestamp(en.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={en?.catalogImportedAt ? `${en.catalogLectureCount} ${t('Vorlesungen')} — ${formatTimestamp(en.catalogImportedAt)}` : (isJobRunning('catalogue', s.periodeId, 'en') ? t('Import läuft…') : t('Noch nicht importiert'))}>
                                     {#if isJobRunning('catalogue', s.periodeId, 'en')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if en?.catalogImportedAt}
-                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'en', `Katalog EN — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                        <button onclick={() => handleDeleteData('catalogue', s.periodeId, 'en', `${t('Katalog EN')} — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title={t("Löschen")}>
                                             <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
                                         </button>
                                     {:else}
                                         <span class="text-slate-300">—</span>
                                     {/if}
                                 </td>
-                                <td class="px-3 py-2 text-center group" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'en') ? 'Import läuft…' : 'Noch nicht importiert')}>
+                                <td class="px-3 py-2 text-center group" title={en?.lecturesImportedAt ? `${en.lecturesSuccessCount}/${en.lecturesTotalCount} — ${formatTimestamp(en.lecturesImportedAt)}` : (isJobRunning('lectures', s.periodeId, 'en') ? t('Import läuft…') : t('Noch nicht importiert'))}>
                                     {#if isJobRunning('lectures', s.periodeId, 'en')}
                                         <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                                     {:else if en?.lecturesImportedAt}
-                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'en', `Details EN — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title="Löschen">
+                                        <button onclick={() => handleDeleteData('lectures', s.periodeId, 'en', `${t('Details EN')} — ${s.label_en}`)} class="text-emerald-600 group-hover:text-red-600" title={t("Löschen")}>
                                             <span class="group-hover:hidden">✓</span><span class="hidden group-hover:inline">🗑</span>
                                         </button>
                                     {:else}
@@ -419,10 +420,10 @@
             <div class="h-2.5 w-2.5 rounded-full bg-red-500"></div>
             <div class="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
             <div class="h-2.5 w-2.5 rounded-full bg-green-500"></div>
-            <span class="ml-2 text-xs text-slate-500 font-mono">Import Log</span>
+            <span class="ml-2 text-xs text-slate-500 font-mono">{t('Import Log')}</span>
             {#if importViewState.jobStatus === 'running'}
                 <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
-                    <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> läuft…
+                    <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> {t('läuft…')}
                 </span>
             {/if}
             {#if importViewState.importPeriodeId !== 'default'}
@@ -431,7 +432,7 @@
         </div>
         <div class="flex-1 overflow-y-auto p-4 font-mono text-sm">
             {#if importViewState.logs.length === 0}
-                <p class="text-slate-600">Bereit. Klicke "Fetch Semesters" und dann einen Import-Button.</p>
+                <p class="text-slate-600">{t('Bereit. Klicke "Fetch Semesters" und dann einen Import-Button.')}</p>
             {:else}
                 {#each importViewState.logs as log}
                     <p class="leading-6
