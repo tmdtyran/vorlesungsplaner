@@ -61,12 +61,15 @@
 .dark .text-amber-700 { color: #fbbf24; }
 .dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.4); }
 .dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15); }
-.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.25); }
+.dark .bg-emerald-100 { background-color: #064e3b; }
+.dark .bg-emerald-400 { background-color: #10b981; }
 .dark .bg-emerald-600 { background-color: #059669; }
 .dark .bg-emerald-700 { background-color: #047857; }
 .dark .text-emerald-600 { color: #6ee7b7; }
 .dark .text-emerald-700 { color: #6ee7b7; }
+.dark .text-emerald-900 { color: #d1fae5; }
 .dark .border-emerald-100 { border-color: rgba(16, 185, 129, 0.3); }
+.dark .border-emerald-500 { border-color: #10b981; }
 .dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.15); }
 .dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.25); }
 .dark .bg-red-200 { background-color: rgba(239, 68, 68, 0.35); }
@@ -81,6 +84,45 @@
 /* Scrollbars (webkit) */
 .dark ::-webkit-scrollbar-track { background: #1e293b; }
 .dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+/* Calendar entry color palette (CalendarView.svelte / WeeklySchedule.svelte)
+   Each entry uses <color>-100 as background, <color>-500 as border,
+   <color>-900 as text and <color>-400 as a small "dot" accent. The -100
+   backgrounds are near-white and the -900 text is near-black in light mode;
+   overriding just some of them left translucent/blended, unreadable colors
+   in dark mode, so all eight are given opaque, high-contrast dark variants. */
+.dark .bg-indigo-100 { background-color: #312e81; }
+.dark .text-indigo-900 { color: #e0e7ff; }
+.dark .border-indigo-500 { border-color: #818cf8; }
+
+.dark .bg-violet-100 { background-color: #4c1d95; }
+.dark .text-violet-900 { color: #ede9fe; }
+.dark .border-violet-500 { border-color: #a78bfa; }
+.dark .bg-violet-400 { background-color: #a78bfa; }
+
+.dark .bg-amber-100 { background-color: #78350f; }
+.dark .text-amber-900 { color: #fef3c7; }
+.dark .border-amber-500 { border-color: #fbbf24; }
+
+.dark .bg-sky-100 { background-color: #0c4a6e; }
+.dark .text-sky-900 { color: #e0f2fe; }
+.dark .border-sky-500 { border-color: #38bdf8; }
+.dark .bg-sky-400 { background-color: #38bdf8; }
+
+.dark .bg-rose-100 { background-color: #881337; }
+.dark .text-rose-900 { color: #ffe4e6; }
+.dark .border-rose-500 { border-color: #fb7185; }
+.dark .bg-rose-400 { background-color: #fb7185; }
+
+.dark .bg-teal-100 { background-color: #134e4a; }
+.dark .text-teal-900 { color: #ccfbf1; }
+.dark .border-teal-500 { border-color: #2dd4bf; }
+.dark .bg-teal-400 { background-color: #2dd4bf; }
+
+.dark .bg-orange-100 { background-color: #7c2d12; }
+.dark .text-orange-900 { color: #ffedd5; }
+.dark .border-orange-500 { border-color: #fb923c; }
+.dark .bg-orange-400 { background-color: #fb923c; }
 
 /* Hover states — the light-mode hover shades (e.g. slate-50) are far too
    bright against dark surfaces, so tone them down to subtle dark shades. */
