@@ -239,7 +239,7 @@
                     class="h-4 w-4 shrink-0 justify-self-center rounded border-slate-300 accent-indigo-600 cursor-pointer"
                     title={t("Im Kalender anzeigen / bei Module & KP berücksichtigen")}
                 />
-                <p class="text-sm font-medium text-slate-800 truncate col-span-4" title={sel.catalog.title}>{sel.catalog.title}</p>
+                <p class="text-sm font-medium text-slate-800 truncate col-span-4" title={[sel.catalog.title, sel.catalog.lecturer, sel.catalog.schedule ? tSchedule(sel.catalog.schedule) : null].filter(Boolean).join('\n')}>{sel.catalog.title}</p>
 
                 <!-- row 3: minus | vorlesungs-id · dozent (spans rest) -->
                 <button
