@@ -166,7 +166,7 @@
 
             <!-- Summary footer -->
             <div class="border-t border-slate-200 bg-slate-50 p-5">
-                <div class="flex gap-6 items-start">
+                <div class="flex gap-6">
                     <div class="flex-1 min-w-0">
                         <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">{t('KP pro Modul')}</p>
                         <div class="max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
@@ -181,10 +181,11 @@
                             {/if}
                         </div>
                     </div>
-                    <div class="ml-auto text-right shrink-0">
-                        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('Gesamt KP')}</p>
+                    <div class="ml-auto shrink-0 flex items-center self-stretch">
+                        <div class="text-right"><p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">{t('Gesamt KP')}</p>
                         <p class="text-3xl font-bold text-indigo-600">{totalCredits}</p>
                         <p class="text-xs text-slate-400">{visibleLectures.filter(s => s.included).length} {t('von')} {visibleLectures.length} {t('eingeschlossen')}</p>
+                    </div>
                     </div>
                 </div>
             </div>
