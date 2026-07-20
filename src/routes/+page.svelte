@@ -8,6 +8,32 @@
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
     import { nav, setActiveTab, type Tab } from '$lib/stores/navigation.svelte';
     import { t } from '$lib/i18n/translations';
+    import { darkMode, toggleDarkMode } from '$lib/stores/darkMode.svelte';
+
+    const WARNING_STORAGE_KEY = 'vorlesungsplaner:warningSeen';
+    let showWarning = $state(false);
+
+    $effect(() => {
+        if (typeof localStorage === 'undefined') return;
+        try {
+            if (localStorage.getItem(WARNING_STORAGE_KEY) !== 'true') {
+                showWarning = true;
+            }
+        } catch {
+            // storage unavailable — skip the warning
+        }
+    });
+
+    function dismissWarning() {
+        showWarning = false;
+        if (typeof localStorage !== 'undefined') {
+            try {
+                localStorage.setItem(WARNING_STORAGE_KEY, 'true');
+            } catch {
+                // storage unavailable — warning will just show again next time
+            }
+        }
+    }
 
     const tabs: { id: Tab; label: string; icon: string }[] = $derived([
         { id: 'import',    label: 'Import',            icon: '⬇' },
@@ -114,6 +140,16 @@
                 <option value="de">DE</option>
                 <option value="en">EN</option>
             </select>
+
+            <button
+                type="button"
+                onclick={toggleDarkMode}
+                aria-label={darkMode.enabled ? t('Hellen Modus aktivieren') : t('Dunklen Modus aktivieren')}
+                title={darkMode.enabled ? t('Hellen Modus aktivieren') : t('Dunklen Modus aktivieren')}
+                class="flex items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-sm shadow-sm hover:bg-slate-50 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+            >
+                {darkMode.enabled ? '☀️' : '🌙'}
+            </button>
         </div>
     </header>
 
@@ -133,4 +169,20 @@
             {/if}
         </div>
     </main>
+
+    {#if showWarning}
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
+            <div class="w-full max-w-sm rounded-xl bg-white p-6 text-center shadow-lg">
+                <p class="text-sm font-medium text-slate-700">das ist eine warnnachricht</p>
+                <button
+                    type="button"
+                    onclick={dismissWarning}
+                    class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+                >
+                    <span class="text-emerald-100">✅</span>
+                    ich habe verstanden
+                </button>
+            </div>
+        </div>
+    {/if}
 </div>

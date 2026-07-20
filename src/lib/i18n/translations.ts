@@ -13,6 +13,8 @@ const dict: Record<string, string> = {
     'Aktiv:': 'Active:',
     '— kein Semester —': '— no semester —',
     '— Import → Fetch Semesters —': '— Import → Fetch Semesters —',
+    'Dunklen Modus aktivieren': 'Enable dark mode',
+    'Hellen Modus aktivieren': 'Enable light mode',
 
     // LectureView.svelte
     'Liste': 'List',

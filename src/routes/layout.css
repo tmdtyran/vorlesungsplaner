@@ -1,1 +1,103 @@
 @import 'tailwindcss';
+
+/*
+ * Dark mode
+ * ---------
+ * The `.dark` class is toggled on <html> by src/lib/stores/darkMode.svelte.ts.
+ * Since the rest of the app uses plain Tailwind utility classes (no `dark:`
+ * variants), dark mode is implemented here by overriding the relevant
+ * utility classes whenever an ancestor has the `.dark` class.
+ */
+.dark {
+    color-scheme: dark;
+}
+
+/* Page / surface backgrounds */
+.dark .bg-slate-100 { background-color: #0f172a; }
+.dark .bg-white { background-color: #1e293b; }
+.dark .bg-slate-50 { background-color: #1e293b; }
+.dark .bg-slate-200 { background-color: #334155; }
+.dark .bg-slate-400 { background-color: #475569; }
+.dark .bg-slate-700 { background-color: #334155; }
+.dark .bg-slate-800 { background-color: #1e293b; }
+.dark .bg-slate-950 { background-color: #020617; }
+
+/* Borders / dividers */
+.dark .border-slate-50 { border-color: #334155; }
+.dark .border-slate-100 { border-color: #334155; }
+.dark .border-slate-200 { border-color: #334155; }
+.dark .border-slate-300 { border-color: #475569; }
+.dark .border-slate-400 { border-color: #64748b; }
+.dark .border-slate-700 { border-color: #475569; }
+.dark .border-slate-800 { border-color: #334155; }
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) { border-color: #334155; }
+
+/* Text colors */
+.dark .text-slate-300 { color: #cbd5e1; }
+.dark .text-slate-400 { color: #94a3b8; }
+.dark .text-slate-500 { color: #94a3b8; }
+.dark .text-slate-600 { color: #cbd5e1; }
+.dark .text-slate-700 { color: #e2e8f0; }
+.dark .text-slate-800 { color: #f1f5f9; }
+.dark .text-slate-900 { color: #f8fafc; }
+
+/* Indigo accents (slightly muted for dark backgrounds) */
+.dark .bg-indigo-50 { background-color: rgba(99, 102, 241, 0.15); }
+.dark .bg-indigo-100 { background-color: rgba(99, 102, 241, 0.25); }
+.dark .bg-indigo-200 { background-color: rgba(99, 102, 241, 0.35); }
+.dark .text-indigo-500 { color: #a5b4fc; }
+.dark .text-indigo-600 { color: #a5b4fc; }
+.dark .text-indigo-700 { color: #c7d2fe; }
+.dark .border-indigo-100 { border-color: rgba(99, 102, 241, 0.3); }
+.dark .border-indigo-200 { border-color: rgba(99, 102, 241, 0.4); }
+.dark .border-indigo-400 { border-color: #818cf8; }
+.dark .ring-indigo-100 { --tw-ring-color: rgba(99, 102, 241, 0.3); }
+
+/* Amber / emerald / red status colors */
+.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.15); }
+.dark .bg-amber-400 { background-color: #d97706; }
+.dark .bg-amber-500 { background-color: #b45309; }
+.dark .text-amber-400 { color: #fbbf24; }
+.dark .text-amber-700 { color: #fbbf24; }
+.dark .border-amber-200 { border-color: rgba(245, 158, 11, 0.4); }
+.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15); }
+.dark .bg-emerald-100 { background-color: rgba(16, 185, 129, 0.25); }
+.dark .bg-emerald-600 { background-color: #059669; }
+.dark .bg-emerald-700 { background-color: #047857; }
+.dark .text-emerald-600 { color: #6ee7b7; }
+.dark .text-emerald-700 { color: #6ee7b7; }
+.dark .border-emerald-100 { border-color: rgba(16, 185, 129, 0.3); }
+.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.15); }
+.dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.25); }
+.dark .bg-red-200 { background-color: rgba(239, 68, 68, 0.35); }
+.dark .text-red-500 { color: #fca5a5; }
+.dark .text-red-600 { color: #fca5a5; }
+
+/* Shadows are barely visible on dark backgrounds; soften them */
+.dark .shadow-sm { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
+.dark .shadow { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.dark .shadow-lg { box-shadow: 0 10px 15px rgba(0, 0, 0, 0.5); }
+
+/* Scrollbars (webkit) */
+.dark ::-webkit-scrollbar-track { background: #1e293b; }
+.dark ::-webkit-scrollbar-thumb { background: #475569; }
+
+/* Hover states — the light-mode hover shades (e.g. slate-50) are far too
+   bright against dark surfaces, so tone them down to subtle dark shades. */
+.dark .hover\:bg-slate-50:hover { background-color: #334155; }
+.dark .hover\:bg-slate-100:hover { background-color: #334155; }
+.dark .hover\:bg-slate-200:hover { background-color: #475569; }
+.dark .hover\:bg-slate-800:hover { background-color: #0f172a; }
+.dark .hover\:text-slate-600:hover { color: #e2e8f0; }
+.dark .hover\:text-slate-700:hover { color: #f1f5f9; }
+.dark .hover\:text-slate-800:hover { color: #f8fafc; }
+.dark .hover\:bg-indigo-50:hover { background-color: rgba(99, 102, 241, 0.2); }
+.dark .hover\:bg-indigo-100:hover { background-color: rgba(99, 102, 241, 0.3); }
+.dark .hover\:bg-indigo-200:hover { background-color: rgba(99, 102, 241, 0.4); }
+.dark .hover\:bg-indigo-700:hover { background-color: #4338ca; }
+.dark .hover\:bg-emerald-700:hover { background-color: #065f46; }
+.dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.2); }
+.dark .hover\:bg-red-100:hover { background-color: rgba(239, 68, 68, 0.3); }
+.dark .hover\:bg-red-200:hover { background-color: rgba(239, 68, 68, 0.4); }
+.dark .hover\:bg-red-700:hover { background-color: #b91c1c; }
+.dark .hover\:text-red-600:hover { color: #fca5a5; }
