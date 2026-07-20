@@ -124,52 +124,57 @@
                         tabindex="0"
                         onclick={() => onSelect?.(sel.catalog)}
                         onkeydown={(e) => e.key === 'Enter' && onSelect?.(sel.catalog)}
-                        class="group relative flex w-full items-start gap-2 border-b border-slate-200 px-3 py-2.5 text-left transition-colors {onSelect ? 'cursor-pointer hover:bg-indigo-50' : ''} {!sel.active ? 'opacity-40' : ''}"
+                        class="group relative grid w-full items-center gap-x-2 gap-y-0.5 border-b border-slate-200 px-3 py-2.5 text-left transition-colors {onSelect ? 'cursor-pointer hover:bg-indigo-50' : ''} {!sel.active ? 'opacity-40' : ''}"
+                        style="grid-template-columns: auto 1fr auto auto auto;"
                     >
-                        <input
-                            type="checkbox"
-                            checked={sel.active}
-                            onclick={(e) => handleToggleActive(sel.catalog.unibas_id, e)}
-                            class="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 accent-indigo-600 cursor-pointer"
-                            title={t("Im Kalender anzeigen / bei Module & KP berücksichtigen")}
-                        />
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-1.5 flex-wrap">
-                                {#if sel.catalog.type_label}
-                                    <span class="shrink-0 rounded bg-indigo-50 px-1 py-0.5 text-[9px] font-semibold text-indigo-600 uppercase tracking-wide">
-                                        {sel.catalog.type_label}
-                                    </span>
-                                {/if}
-                                <p class="text-sm font-medium text-slate-800 truncate" title={sel.catalog.title}>{sel.catalog.title}</p>
-                            </div>
-                            {#if sel.catalog.course_number}
-                                <p class="text-xs text-slate-500">{sel.catalog.course_number}</p>
+                        <!-- row 1: empty | vorlesungstyp | kp | pfeil-oben | pfeil-rechts -->
+                        <div></div>
+                        <div class="min-w-0">
+                            {#if sel.catalog.type_label}
+                                <span class="shrink-0 rounded bg-indigo-50 px-1 py-0.5 text-[9px] font-semibold text-indigo-600 uppercase tracking-wide">
+                                    {sel.catalog.type_label}
+                                </span>
                             {/if}
                         </div>
                         {#if sel.catalog.credits}
                             <span class="shrink-0 rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
                                 {sel.catalog.credits} {t('KP')}
                             </span>
+                        {:else}
+                            <div></div>
                         {/if}
-                        <div class="flex flex-col gap-1 shrink-0">
-                            <button
-                                onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
-                                class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
-                                title={t("Entfernen")}
-                            >−</button>
-                            <div class="flex gap-1">
-                                <button
-                                    onclick={(e) => handleOpenVvz(sel.catalog.unibas_id, e)}
-                                    class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500 text-xs transition-opacity hover:bg-slate-200 hover:text-slate-700"
-                                    title={t("Im Vorlesungsverzeichnis öffnen")}
-                                >↗</button>
-                                <button
-                                    onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
-                                    class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
-                                    title={t("Im Details-Tab öffnen")}
-                                >→</button>
-                            </div>
-                        </div>
+                        <button
+                            onclick={(e) => handleOpenVvz(sel.catalog.unibas_id, e)}
+                            class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-slate-500 text-xs transition-opacity hover:bg-slate-200 hover:text-slate-700"
+                            title={t("Im Vorlesungsverzeichnis öffnen")}
+                        >↗</button>
+                        <button
+                            onclick={(e) => handleOpenDetails(sel.catalog.unibas_id, e)}
+                            class="opacity-0 group-hover:opacity-100 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold transition-opacity hover:bg-indigo-200"
+                            title={t("Im Details-Tab öffnen")}
+                        >→</button>
+
+                        <!-- row 2: checkbox | titel (spans rest) -->
+                        <input
+                            type="checkbox"
+                            checked={sel.active}
+                            onclick={(e) => handleToggleActive(sel.catalog.unibas_id, e)}
+                            class="h-4 w-4 shrink-0 justify-self-center rounded border-slate-300 accent-indigo-600 cursor-pointer"
+                            title={t("Im Kalender anzeigen / bei Module & KP berücksichtigen")}
+                        />
+                        <p class="text-sm font-medium text-slate-800 truncate col-span-4" title={sel.catalog.title}>{sel.catalog.title}</p>
+
+                        <!-- row 3: minus | vorlesungs-id (spans rest) -->
+                        <button
+                            onclick={(e) => handleRemove(sel.catalog.unibas_id, e)}
+                            class="opacity-0 group-hover:opacity-100 justify-self-center flex h-6 w-6 items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold transition-opacity hover:bg-red-200"
+                            title={t("Entfernen")}
+                        >−</button>
+                        {#if sel.catalog.course_number}
+                            <p class="text-xs text-slate-500 col-span-4">{sel.catalog.course_number}</p>
+                        {:else}
+                            <div class="col-span-4"></div>
+                        {/if}
                     </div>
                 {/each}
             {/if}
