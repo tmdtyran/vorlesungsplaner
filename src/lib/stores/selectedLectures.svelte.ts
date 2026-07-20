@@ -134,6 +134,23 @@ export function toggleActive(unibasId: number | null) {
 }
 
 /**
+ * Reorders the selection list by moving the lecture identified by
+ * `draggedUnibasId` to sit at the position of `targetUnibasId` (used for
+ * drag-and-drop reordering in the panel). Order is persisted like any
+ * other change to the selection.
+ */
+export function reorderLectures(draggedUnibasId: number | null, targetUnibasId: number | null) {
+    if (draggedUnibasId === null || targetUnibasId === null || draggedUnibasId === targetUnibasId) return;
+    const fromIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === draggedUnibasId);
+    const toIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === targetUnibasId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [moved] = selectedLectures.splice(fromIdx, 1);
+    const insertIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === targetUnibasId);
+    selectedLectures.splice(insertIdx, 0, moved);
+    persistCurrent();
+}
+
+/**
  * Legend-only visibility toggle — hides the lecture from the Kalender grid
  * without touching `active`, so it stays checked/visible in "Meine Auswahl"
  * and in Module & KP, and remains listed (just dimmed) in the legend so it

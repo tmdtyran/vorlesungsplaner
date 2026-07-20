@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { selectedLectures, removeLecture, toggleActive } from '$lib/stores/selectedLectures.svelte';
+    import { selectedLectures, removeLecture, toggleActive, reorderLectures } from '$lib/stores/selectedLectures.svelte';
     import { goToDetails, nav, setSelectedPanelExpanded } from '$lib/stores/navigation.svelte';
     import { activeSemester } from '$lib/stores/semester.svelte';
     import type { CatalogEntry } from '$lib/types/lecture';
@@ -29,6 +29,36 @@
 
     let copied = $state(false);
     let search = $state('');
+
+    // Drag-and-drop reordering. Only enabled while unfiltered, since the
+    // filtered list's order doesn't map 1:1 onto the underlying selection order.
+    let draggedId = $state<number | null>(null);
+    let dragOverId = $state<number | null>(null);
+
+    function handleDragStart(unibasId: number | null, e: DragEvent) {
+        if (unibasId === null) return;
+        draggedId = unibasId;
+        e.dataTransfer?.setData('text/plain', String(unibasId));
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+    }
+
+    function handleDragOver(unibasId: number | null, e: DragEvent) {
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        dragOverId = unibasId;
+    }
+
+    function handleDrop(unibasId: number | null, e: DragEvent) {
+        e.preventDefault();
+        reorderLectures(draggedId, unibasId);
+        draggedId = null;
+        dragOverId = null;
+    }
+
+    function handleDragEnd() {
+        draggedId = null;
+        dragOverId = null;
+    }
 
     const filteredLectures = $derived(
         selectedLectures.filter(s => {
@@ -118,17 +148,37 @@
                     {t('Keine Treffer.')}
                 </div>
             {:else}
+                {@const canDrag = search.trim() === ''}
                 {#each filteredLectures as sel (sel.catalog.unibas_id)}
                     <div
                         role="button"
                         tabindex="0"
                         onclick={() => onSelect?.(sel.catalog)}
                         onkeydown={(e) => e.key === 'Enter' && onSelect?.(sel.catalog)}
-                        class="group relative grid w-full items-center gap-x-2 gap-y-0.5 border-b border-slate-200 px-3 py-2.5 text-left transition-colors {onSelect ? 'cursor-pointer hover:bg-indigo-50' : ''} {!sel.active ? 'opacity-40' : ''}"
+                        ondragover={(e) => canDrag && handleDragOver(sel.catalog.unibas_id, e)}
+                        ondrop={(e) => canDrag && handleDrop(sel.catalog.unibas_id, e)}
+                        class="group relative grid w-full items-center gap-x-2 gap-y-0.5 border-b border-slate-200 px-3 py-2.5 text-left transition-colors {onSelect ? 'cursor-pointer hover:bg-indigo-50' : ''} {!sel.active ? 'opacity-40' : ''} {dragOverId === sel.catalog.unibas_id && draggedId !== sel.catalog.unibas_id ? 'bg-indigo-100' : ''}"
                         style="grid-template-columns: auto 1fr auto auto auto;"
                     >
-                        <!-- row 1: empty | vorlesungstyp | kp | pfeil-oben | pfeil-rechts -->
-                        <div></div>
+                        <!-- row 1: drag-handle | vorlesungstyp | kp | pfeil-oben | pfeil-rechts -->
+                        {#if canDrag}
+                            <button
+                                draggable="true"
+                                ondragstart={(e) => handleDragStart(sel.catalog.unibas_id, e)}
+                                ondragend={handleDragEnd}
+                                onclick={(e) => e.stopPropagation()}
+                                class="opacity-0 group-hover:opacity-100 justify-self-center flex h-4 w-4 items-center justify-center text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing transition-opacity"
+                                title={t("Ziehen zum Umsortieren")}
+                            >
+                                <svg viewBox="0 0 16 16" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <rect y="2" width="16" height="1.6" rx="0.8" fill="currentColor" />
+                                    <rect y="7.2" width="16" height="1.6" rx="0.8" fill="currentColor" />
+                                    <rect y="12.4" width="16" height="1.6" rx="0.8" fill="currentColor" />
+                                </svg>
+                            </button>
+                        {:else}
+                            <div></div>
+                        {/if}
                         <div class="min-w-0">
                             {#if sel.catalog.type_label}
                                 <span class="shrink-0 rounded bg-indigo-50 px-1 py-0.5 text-[9px] font-semibold text-indigo-600 uppercase tracking-wide">
