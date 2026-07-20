@@ -13,28 +13,73 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact: linux
+            files: |
+              Debug.sh
+              vorlesungsplaner-linux_arm64
+              vorlesungsplaner-linux_armhf
+              vorlesungsplaner-linux_x64
 
           - os: windows-latest
             artifact: windows
+            files: |
+              Debug.bat
+              vorlesungsplaner-win_x64.exe
 
           - os: macos-latest
             artifact: macos
+            files: |
+              Debug.sh
+              vorlesungsplaner-mac_arm64
+              vorlesungsplaner-mac_x64
+              vorlesungsplaner-mac_universal
 
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: oven-sh/setup-bun@v2
-      
+
       - run: bun install --frozen-lockfile
-      
+
       - run: bunx neu update
         working-directory: neutralino
-      
+
       - run: bun run build:desktop
-      
+
+      - name: Package (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir package
+          cp neutralino/dist/vorlesungsplaner/resources.neu package/
+          cp -r neutralino/dist/vorlesungsplaner/server package/
+
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            cp "neutralino/dist/vorlesungsplaner/$file" package/
+          done <<EOF
+          ${{ matrix.files }}
+          EOF
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory package | Out-Null
+
+          Copy-Item neutralino/dist/vorlesungsplaner/resources.neu package
+          Copy-Item neutralino/dist/vorlesungsplaner/server package -Recurse
+
+          @'
+          ${{ matrix.files }}
+          '@ -split "`n" | ForEach-Object {
+              $file = $_.Trim()
+              if ($file -ne "") {
+                  Copy-Item "neutralino/dist/vorlesungsplaner/$file" package
+              }
+          }
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: neutralino/dist/
+          name: vorlesungsplaner-${{ matrix.artifact }}
+          path: package/
