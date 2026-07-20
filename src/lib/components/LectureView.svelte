@@ -126,8 +126,8 @@
         removeLecture(unibasId);
     }
 
-    const filteredLeft = $derived(
-        allLectures
+    const filteredLeft = $derived.by(() => {
+        let list = allLectures
             .filter(l => l.unibas_id !== null || lectureViewState.viewMode === 'hierarchy')
             .filter(l => {
                 if (!lectureViewState.searchLeft) return true;
@@ -138,7 +138,26 @@
                     (l.lecturer ?? '').toLowerCase().includes(q)
                 );
             })
-    );
+            .filter(l => {
+                // No schedule info at all -> nothing to filter on, always show.
+                if (!l.schedule) return true;
+                return WEEKDAYS.some(day => l.schedule!.includes(day) && lectureViewState.weekdayFilter.has(day));
+            })
+            .filter(l => {
+                if (lectureViewState.typeFilter === null) return true;
+                // Lectures without a type aren't excluded by the type filter.
+                if (!l.type_label) return true;
+                return lectureViewState.typeFilter.has(l.type_label);
+            });
+
+        const dir = lectureViewState.sortDirection === 'asc' ? 1 : -1;
+        if (lectureViewState.sortBy === 'alphabetical') {
+            list = [...list].sort((a, b) => dir * a.title.localeCompare(b.title));
+        } else if (lectureViewState.sortBy === 'credits') {
+            list = [...list].sort((a, b) => dir * ((a.credits ?? -1) - (b.credits ?? -1)));
+        }
+        return list;
+    });
 
     // Build a real parent/child tree from ALL rows (not the flat, arbitrarily
     // hierarchy_key-sorted list) and flatten it via depth-first traversal so
@@ -226,6 +245,53 @@
         'Do': 'Donnerstag', 'Fr': 'Freitag', 'Sa': 'Samstag'
     };
 
+    // --- Sort/filter dropdown (right of the search field) -----------------
+    const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+
+    // All distinct lecture types actually present in the currently loaded
+    // catalog — this is how the type-filter checkbox list is populated
+    // ("die Katalog-DB nach allen verfügbaren Kursmöglichkeiten fragen").
+    const availableTypes = $derived.by(() => {
+        const set = new Set<string>();
+        for (const l of allLectures) {
+            if (l.unibas_id !== null && l.type_label) set.add(l.type_label);
+        }
+        return [...set].sort((a, b) => a.localeCompare(b));
+    });
+
+    // Default the type filter to "everything checked" the first time the
+    // catalog for a semester loads (mirrors weekdayFilter's all-checked default).
+    $effect(() => {
+        const types = availableTypes;
+        if (lectureViewState.typeFilter === null && types.length > 0) {
+            lectureViewState.typeFilter = new Set(types);
+        }
+    });
+
+    function sortModeLabel(mode: 'alphabetical' | 'credits' | 'weekdays' | 'type'): string {
+        switch (mode) {
+            case 'alphabetical': return t('Alphabetisch');
+            case 'credits': return t('KP');
+            case 'weekdays': return t('Wochentage');
+            case 'type': return t('Vorlesungstyp');
+        }
+    }
+
+    function toggleWeekday(day: string) {
+        const next = new Set(lectureViewState.weekdayFilter);
+        if (next.has(day)) next.delete(day); else next.add(day);
+        lectureViewState.weekdayFilter = next;
+    }
+
+    function toggleType(type: string) {
+        const next = new Set(lectureViewState.typeFilter ?? []);
+        if (next.has(type)) next.delete(type); else next.add(type);
+        lectureViewState.typeFilter = next;
+    }
+
+    let sortMenuOpen = $state(false);
+    let subMenuOpen = $state(false);
+
     const virtualFlat = $derived.by(() => virtualize(filteredLeft, ROW_HEIGHT_FLAT, lectureViewState.scrollTopFlat));
     const virtualHierarchy = $derived.by(() => virtualize(hierarchyFlatList, ROW_HEIGHT_HIERARCHY, lectureViewState.scrollTopHierarchy));
 
@@ -272,6 +338,96 @@
                 placeholder={t('Vorlesungen suchen...')}
                 class="w-full rounded-lg border border-slate-200 pl-9 pr-3 py-1.5 text-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
             />
+        </div>
+
+        <!-- Sort/filter mode dropdown -->
+        <div class="relative">
+            <button
+                onclick={() => { sortMenuOpen = !sortMenuOpen; subMenuOpen = false; }}
+                class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+            >
+                {sortModeLabel(lectureViewState.sortBy)} <span class="text-slate-400">▾</span>
+            </button>
+            {#if sortMenuOpen}
+                <div class="fixed inset-0 z-10" onclick={() => sortMenuOpen = false}></div>
+                <div class="absolute left-0 top-full mt-1 z-20 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {#each (['alphabetical', 'credits', 'weekdays', 'type'] as const) as mode}
+                        <button
+                            onclick={() => { lectureViewState.sortBy = mode; sortMenuOpen = false; }}
+                            class="block w-full px-3 py-1.5 text-left text-xs hover:bg-indigo-50 {lectureViewState.sortBy === mode ? 'text-indigo-600 font-semibold' : 'text-slate-600'}"
+                        >{sortModeLabel(mode)}</button>
+                    {/each}
+                </div>
+            {/if}
+        </div>
+
+        <!-- Secondary control: asc/desc for alphabetical & KP, checkbox lists for weekdays & type -->
+        <div class="relative">
+            {#if lectureViewState.sortBy === 'alphabetical' || lectureViewState.sortBy === 'credits'}
+                <button
+                    onclick={() => subMenuOpen = !subMenuOpen}
+                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+                >
+                    {lectureViewState.sortDirection === 'asc' ? t('Aufsteigend') : t('Absteigend')} <span class="text-slate-400">▾</span>
+                </button>
+                {#if subMenuOpen}
+                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
+                    <div class="absolute left-0 top-full mt-1 z-20 w-36 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        {#each (['asc', 'desc'] as const) as dir}
+                            <button
+                                onclick={() => { lectureViewState.sortDirection = dir; subMenuOpen = false; }}
+                                class="block w-full px-3 py-1.5 text-left text-xs hover:bg-indigo-50 {lectureViewState.sortDirection === dir ? 'text-indigo-600 font-semibold' : 'text-slate-600'}"
+                            >{dir === 'asc' ? t('Aufsteigend') : t('Absteigend')}</button>
+                        {/each}
+                    </div>
+                {/if}
+            {:else if lectureViewState.sortBy === 'weekdays'}
+                <button
+                    onclick={() => subMenuOpen = !subMenuOpen}
+                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+                >
+                    {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/5) <span class="text-slate-400">▾</span>
+                </button>
+                {#if subMenuOpen}
+                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
+                    <div class="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        {#each WEEKDAYS as day}
+                            <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={lectureViewState.weekdayFilter.has(day)}
+                                    onchange={() => toggleWeekday(day)}
+                                    class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                                />
+                                {t(day)}
+                            </label>
+                        {/each}
+                    </div>
+                {/if}
+            {:else if lectureViewState.sortBy === 'type'}
+                <button
+                    onclick={() => subMenuOpen = !subMenuOpen}
+                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+                >
+                    {t('Vorlesungstyp')} ({lectureViewState.typeFilter?.size ?? 0}/{availableTypes.length}) <span class="text-slate-400">▾</span>
+                </button>
+                {#if subMenuOpen}
+                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
+                    <div class="absolute left-0 top-full mt-1 z-20 w-48 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                        {#each availableTypes as type}
+                            <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={lectureViewState.typeFilter?.has(type) ?? false}
+                                    onchange={() => toggleType(type)}
+                                    class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                                />
+                                {type}
+                            </label>
+                        {/each}
+                    </div>
+                {/if}
+            {/if}
         </div>
         {#if loading}
             <span class="text-xs text-slate-400">{t('Laden…')}</span>
