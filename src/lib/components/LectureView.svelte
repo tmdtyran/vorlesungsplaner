@@ -139,9 +139,9 @@
                 );
             })
             .filter(l => {
-                // No schedule info at all -> nothing to filter on, always show.
-                if (!l.schedule) return true;
-                return WEEKDAYS.some(day => l.schedule!.includes(day) && lectureViewState.weekdayFilter.has(day));
+                const days = l.schedule ? WEEKDAYS.filter(day => l.schedule!.includes(day)) : [];
+                if (days.length === 0) return lectureViewState.weekdayFilter.has(IRREGULAR);
+                return days.some(day => lectureViewState.weekdayFilter.has(day));
             })
             .filter(l => {
                 if (lectureViewState.typeFilter === null) return true;
@@ -247,6 +247,8 @@
 
     // --- Sort/filter dropdown (right of the search field) -----------------
     const WEEKDAYS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'];
+    const IRREGULAR = 'Unregelmässig';
+    const WEEKDAY_OPTIONS = [...WEEKDAYS, IRREGULAR];
 
     // All distinct lecture types actually present in the currently loaded
     // catalog — this is how the type-filter checkbox list is populated
@@ -287,6 +289,23 @@
         const next = new Set(lectureViewState.typeFilter ?? []);
         if (next.has(type)) next.delete(type); else next.add(type);
         lectureViewState.typeFilter = next;
+    }
+
+    // "select all" checkbox shown inside the Vorlesungstyp dropdown button.
+    const allTypesSelected = $derived(
+        availableTypes.length > 0 && availableTypes.every(ty => lectureViewState.typeFilter?.has(ty) ?? false)
+    );
+    const someTypesSelected = $derived((lectureViewState.typeFilter?.size ?? 0) > 0);
+
+    function toggleAllTypes() {
+        lectureViewState.typeFilter = allTypesSelected ? new Set() : new Set(availableTypes);
+    }
+
+    // Svelte action: HTML checkboxes only support the indeterminate ("−")
+    // visual state via the DOM property, not a declarative attribute.
+    function indeterminate(node: HTMLInputElement, value: boolean) {
+        node.indeterminate = value;
+        return { update(v: boolean) { node.indeterminate = v; } };
     }
 
     let sortMenuOpen = $state(false);
@@ -386,12 +405,12 @@
                     onclick={() => subMenuOpen = !subMenuOpen}
                     class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
                 >
-                    {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/5) <span class="text-slate-400">▾</span>
+                    {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/{WEEKDAY_OPTIONS.length}) <span class="text-slate-400">▾</span>
                 </button>
                 {#if subMenuOpen}
                     <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
                     <div class="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                        {#each WEEKDAYS as day}
+                        {#each WEEKDAY_OPTIONS as day}
                             <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
                                 <input
                                     type="checkbox"
@@ -405,12 +424,23 @@
                     </div>
                 {/if}
             {:else if lectureViewState.sortBy === 'type'}
-                <button
+                <div
+                    role="button"
+                    tabindex="0"
                     onclick={() => subMenuOpen = !subMenuOpen}
-                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+                    onkeydown={(e) => e.key === 'Enter' && (subMenuOpen = !subMenuOpen)}
+                    class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap cursor-pointer"
                 >
+                    <input
+                        type="checkbox"
+                        checked={allTypesSelected}
+                        use:indeterminate={someTypesSelected && !allTypesSelected}
+                        onclick={(e) => { e.stopPropagation(); toggleAllTypes(); }}
+                        class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                        title={t('Alle')}
+                    />
                     {t('Vorlesungstyp')} ({lectureViewState.typeFilter?.size ?? 0}/{availableTypes.length}) <span class="text-slate-400">▾</span>
-                </button>
+                </div>
                 {#if subMenuOpen}
                     <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
                     <div class="absolute left-0 top-full mt-1 z-20 w-48 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">

@@ -25,7 +25,7 @@ export const lectureViewState = $state({
     // alphabetically.
     sortBy: 'alphabetical' as 'alphabetical' | 'credits' | 'weekdays' | 'type',
     sortDirection: 'asc' as 'asc' | 'desc',
-    weekdayFilter: new Set<string>(['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag']),
+    weekdayFilter: new Set<string>(['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Unregelmässig']),
     // null = not yet initialized from the loaded catalog; once the available
     // type_labels are known, this is populated with all of them (i.e. "all
     // checked" by default), matching weekdayFilter's default.
