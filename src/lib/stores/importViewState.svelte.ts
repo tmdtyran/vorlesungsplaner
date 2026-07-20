@@ -9,7 +9,7 @@
 import { activeSemester } from './semester.svelte';
 
 export type ImportAction = 'catalogue' | 'lectures';
-export type JobStatus = 'idle' | 'running' | 'done' | 'error';
+export type JobStatus = 'idle' | 'queued' | 'running' | 'paused' | 'done' | 'error';
 
 export const importViewState = $state({
     // Logs/status are tracked separately per import type so the log

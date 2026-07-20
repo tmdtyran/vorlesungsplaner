@@ -2,6 +2,7 @@
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
     import { importViewState, pollState, type ImportAction } from '$lib/stores/importViewState.svelte';
     import { t } from '$lib/i18n/translations';
+    import QueueOverlay from './QueueOverlay.svelte';
 
     interface ImportStatusEntry {
         periodeId: string;
@@ -25,6 +26,22 @@
     let importStatus = $state<ImportStatusEntry[]>([]);
     let runningJobs = $state<RunningJob[]>([]);
 
+    interface QueueItem {
+        id: string;
+        action: ImportAction;
+        periodeId: string;
+        lang: string;
+        status: 'queued' | 'running' | 'paused' | 'error';
+        addedAt: string;
+        progress?: { processedIds: number[]; success: number; failed: number };
+        error?: string | null;
+    }
+    let queueItems = $state<QueueItem[]>([]);
+    let queuePaused = $state(false);
+    let queueOpen = $state(false);
+
+    const anyImportActive = $derived(queueItems.length > 0);
+
     function statusFor(periodeId: string, lang: string): ImportStatusEntry | null {
         return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
     }
@@ -46,6 +63,31 @@
         } catch {
             // silently ignore
         }
+    }
+
+    async function loadQueue() {
+        try {
+            const res = await fetch('/api/import/queue');
+            if (!res.ok) return;
+            const data = await res.json();
+            queueItems = data.items ?? [];
+            queuePaused = !!data.paused;
+        } catch {
+            // silently ignore
+        }
+    }
+
+    // "Import All Lectures" may only be queued once the catalogue for this
+    // semester+lang is either already imported, or itself queued/running/
+    // paused — mirrors the server-side check in importQueue.ts so the
+    // button is disabled up front instead of erroring on click.
+    function catalogReady(periodeId: string, lang: string): boolean {
+        if (statusFor(periodeId, lang)?.catalogImportedAt) return true;
+        return queueItems.some(i => i.action === 'catalogue' && i.periodeId === periodeId && i.lang === lang);
+    }
+
+    function queueEntry(action: ImportAction, periodeId: string, lang: string): QueueItem | undefined {
+        return queueItems.find(i => i.action === action && i.periodeId === periodeId && i.lang === lang);
     }
 
     function formatTimestamp(iso: string | null): string {
@@ -126,7 +168,6 @@
     async function runImport(action: ImportAction) {
         importViewState.logsByAction[action] = [];
         importViewState.logsSeenByAction[action] = 0;
-        importViewState.statusByAction[action] = 'running';
         importViewState.viewedAction = action;
 
         try {
@@ -135,11 +176,19 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ action, periodeId: importViewState.importPeriodeId, lang: importViewState.importLang })
             });
+            const data = await response.json().catch(() => ({}));
             if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                importViewState.logsByAction[action] = [`${t('Fehler:')} ${err.error ?? response.statusText}`];
+                importViewState.logsByAction[action] = [`${t('Fehler:')} ${data.error ?? response.statusText}`];
                 importViewState.statusByAction[action] = 'error';
                 return;
+            }
+            // The server enqueues rather than starting immediately — if
+            // nothing else was running this starts right away and the next
+            // poll tick (below) picks it up as "running"; otherwise it
+            // just sits as "queued" in the overlay until its turn comes.
+            importViewState.statusByAction[action] = data.status === 'running' ? 'running' : 'queued';
+            if (data.status === 'running') {
+                startPolling(action, importViewState.importPeriodeId, importViewState.importLang);
             }
         } catch (err: any) {
             importViewState.logsByAction[action] = [`${t('Fehler:')} ${err?.message ?? err}`];
@@ -147,8 +196,8 @@
             return;
         }
 
-        startPolling(action, importViewState.importPeriodeId, importViewState.importLang);
         await loadStatus();
+        await loadQueue();
     }
 
     // Checks the server for a currently running job for the active
@@ -226,10 +275,18 @@
                 .catch(() => {});
         }
         loadStatus();
+        loadQueue();
 
         // Keep the status overview fresh even when idle, so jobs started
-        // from a different browser tab still show up here.
-        const statusInterval = setInterval(loadStatus, 4000);
+        // from a different browser tab still show up here. Also catches
+        // a queued job for the currently selected semester/lang the
+        // moment it actually starts running (we don't get pushed an event
+        // for that — it just becomes the queue's front item at some point).
+        const statusInterval = setInterval(() => {
+            loadStatus();
+            loadQueue();
+            if (!importViewState.currentAction) detectRunningJob();
+        }, 1500);
         return () => clearInterval(statusInterval);
     });
     async function handleDeleteData(type: ImportAction, periodeId: string, lang: string, label: string) {
@@ -336,7 +393,20 @@
             </select>
         </div>
 
-        <div class="ml-auto flex gap-3">
+        <div class="ml-auto flex items-center gap-3">
+            <button
+                onclick={() => (queueOpen = !queueOpen)}
+                class="relative flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+            >
+                📋 {t('Warteschlange')}
+                {#if queueItems.length > 0}
+                    <span class="flex h-5 min-w-5 items-center justify-center rounded-full bg-indigo-600 px-1 text-xs font-semibold text-white">{queueItems.length}</span>
+                {/if}
+                {#if queuePaused}
+                    <span class="h-2 w-2 rounded-full bg-amber-500" title={t('Warteschlange pausiert')}></span>
+                {/if}
+            </button>
+
             {#if importViewState.currentAction}
                 <button
                     onclick={handleCancelImport}
@@ -346,27 +416,39 @@
                 </button>
             {/if}
             <button
-                disabled={importViewState.currentAction !== null || importViewState.importPeriodeId === 'default'}
+                disabled={importViewState.importPeriodeId === 'default' || !!queueEntry('catalogue', importViewState.importPeriodeId, importViewState.importLang)}
                 onclick={() => runImport('catalogue')}
                 class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
                 {#if importViewState.currentAction === 'catalogue'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
-                {t('Import Catalogue')}
+                {anyImportActive ? t('In Warteschlange') : t('Import Catalogue')}
             </button>
             <button
-                disabled={importViewState.currentAction !== null || importViewState.importPeriodeId === 'default'}
+                disabled={importViewState.importPeriodeId === 'default'
+                    || !catalogReady(importViewState.importPeriodeId, importViewState.importLang)
+                    || !!queueEntry('lectures', importViewState.importPeriodeId, importViewState.importLang)}
+                title={!catalogReady(importViewState.importPeriodeId, importViewState.importLang) ? t('Katalog muss zuerst importiert oder eingereiht werden.') : undefined}
                 onclick={() => runImport('lectures')}
                 class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
                 {#if importViewState.currentAction === 'lectures'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
-                {t('Import All Lectures')}
+                {anyImportActive ? t('In Warteschlange') : t('Import All Lectures')}
             </button>
         </div>
     </div>
+
+    {#if queueOpen}
+        <QueueOverlay
+            {queueItems}
+            {queuePaused}
+            onclose={() => (queueOpen = false)}
+            onchange={() => { loadQueue(); loadStatus(); }}
+        />
+    {/if}
 
     <!-- Import status overview -->
     {#if availableSemesters.length > 0}
@@ -464,6 +546,8 @@
                         {actionLabel(action)}
                         {#if importViewState.statusByAction[action] === 'running'}
                             <span class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse align-middle"></span>
+                        {:else if importViewState.statusByAction[action] === 'queued' || importViewState.statusByAction[action] === 'paused'}
+                            <span class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-slate-400 align-middle"></span>
                         {/if}
                     </button>
                 {/each}
@@ -472,6 +556,14 @@
             {#if importViewState.statusByAction[importViewState.viewedAction] === 'running'}
                 <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
                     <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> {t('läuft…')}
+                </span>
+            {:else if importViewState.statusByAction[importViewState.viewedAction] === 'queued'}
+                <span class="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
+                    <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span> {t('wartet')}
+                </span>
+            {:else if importViewState.statusByAction[importViewState.viewedAction] === 'paused'}
+                <span class="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
+                    <span class="h-1.5 w-1.5 rounded-full bg-slate-400"></span> {t('pausiert')}
                 </span>
             {/if}
             {#if importViewState.importPeriodeId !== 'default'}

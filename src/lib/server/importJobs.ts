@@ -17,7 +17,7 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { dbSubDir } from "./db";
 
-export type JobStatus = "running" | "done" | "error";
+export type JobStatus = "running" | "done" | "error" | "paused";
 export type ImportAction = "catalogue" | "lectures";
 
 export interface ImportJob {
@@ -31,10 +31,15 @@ export interface ImportJob {
     finishedAt: string | null;
     error: string | null;
     cancelRequested: boolean;
+    pauseRequested: boolean;
     /** Called once the runner has actually stopped, only if the job was
      *  cancelled — used to retry data cleanup/VACUUM after any in-flight
      *  transaction from the runner has truly rolled back/committed. */
     cleanupOnCancel?: () => void;
+    /** Called once the runner has settled (done/paused/error), after
+     *  status/cleanup have been applied — used by the queue system to
+     *  advance to the next queued item. */
+    onSettled?: () => void;
 }
 
 interface PersistedJob {
@@ -116,6 +121,19 @@ export function cancelJob(key: string): boolean {
 }
 
 /**
+ * Flags a running job to stop at its next checkpoint *without* deleting its
+ * data — unlike cancelJob(). The runner keeps whatever progress it can
+ * (e.g. lecture-details already fetched) so a later resume can pick up
+ * roughly where it left off instead of starting over.
+ */
+export function requestPause(key: string): boolean {
+    const job = jobs.get(key);
+    if (!job || job.status !== "running") return false;
+    job.pauseRequested = true;
+    return true;
+}
+
+/**
  * Starts a background job unless one with the same key is already running.
  * `runner` receives a `log(msg)` callback to append progress lines and an
  * `isCancelled()` callback it should check periodically, breaking out and
@@ -130,8 +148,9 @@ export function startJob(
     action: ImportAction,
     periodeId: string,
     lang: string,
-    runner: (log: (msg: string) => void, isCancelled: () => boolean) => Promise<void>,
-    cleanupOnCancel?: () => void
+    runner: (log: (msg: string) => void, isCancelled: () => boolean, isPaused: () => boolean) => Promise<void>,
+    cleanupOnCancel?: () => void,
+    onSettled?: () => void
 ): ImportJob {
     const key = jobKey(action, periodeId, lang);
     const existing = jobs.get(key);
@@ -150,7 +169,9 @@ export function startJob(
         finishedAt: null,
         error: null,
         cancelRequested: false,
-        cleanupOnCancel
+        pauseRequested: false,
+        cleanupOnCancel,
+        onSettled
     };
     jobs.set(key, job);
     persistJob(job);
@@ -160,13 +181,20 @@ export function startJob(
         persistJob(job);
     };
     const isCancelled = () => job.cancelRequested;
+    const isPaused = () => job.pauseRequested;
 
     // Fire and forget — this promise chain keeps running server-side
     // regardless of whether any client is currently listening.
-    runner(log, isCancelled)
+    runner(log, isCancelled, isPaused)
         .then(() => {
-            job.status = job.cancelRequested ? "error" : "done";
-            if (job.cancelRequested) job.error = "Abgebrochen";
+            if (job.cancelRequested) {
+                job.status = "error";
+                job.error = "Abgebrochen";
+            } else if (job.pauseRequested) {
+                job.status = "paused";
+            } else {
+                job.status = "done";
+            }
             job.finishedAt = new Date().toISOString();
         })
         .catch((err: any) => {
@@ -189,6 +217,7 @@ export function startJob(
                     console.error(`[importJobs] cleanupOnCancel fehlgeschlagen für ${key}:`, err);
                 }
             }
+            job.onSettled?.();
         });
 
     return job;
