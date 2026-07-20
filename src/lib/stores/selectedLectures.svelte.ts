@@ -135,18 +135,26 @@ export function toggleActive(unibasId: number | null) {
 
 /**
  * Reorders the selection list by moving the lecture identified by
- * `draggedUnibasId` to sit at the position of `targetUnibasId` (used for
- * drag-and-drop reordering in the panel). Order is persisted like any
+ * `draggedUnibasId` to sit directly before `targetUnibasId` (used for
+ * drag-and-drop reordering in the panel). Pass `targetUnibasId = null` to
+ * move the lecture to the end of the list. Order is persisted like any
  * other change to the selection.
  */
 export function reorderLectures(draggedUnibasId: number | null, targetUnibasId: number | null) {
-    if (draggedUnibasId === null || targetUnibasId === null || draggedUnibasId === targetUnibasId) return;
+    if (draggedUnibasId === null || draggedUnibasId === targetUnibasId) return;
     const fromIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === draggedUnibasId);
-    const toIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === targetUnibasId);
-    if (fromIdx === -1 || toIdx === -1) return;
+    if (fromIdx === -1) return;
     const [moved] = selectedLectures.splice(fromIdx, 1);
-    const insertIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === targetUnibasId);
-    selectedLectures.splice(insertIdx, 0, moved);
+    if (targetUnibasId === null) {
+        selectedLectures.push(moved);
+    } else {
+        const toIdx = selectedLectures.findIndex(l => l.catalog.unibas_id === targetUnibasId);
+        if (toIdx === -1) {
+            selectedLectures.push(moved);
+        } else {
+            selectedLectures.splice(toIdx, 0, moved);
+        }
+    }
     persistCurrent();
 }
 
