@@ -110,16 +110,6 @@ const dict: Record<string, string> = {
     'KW': 'Week',
     'bis': 'to',
 
-    // LectureView.svelte — sort/filter dropdown
-    'Alphabetisch': 'Alphabetical',
-    'Wochentage': 'Weekdays',
-    'Vorlesungstyp': 'Lecture type',
-    'Aufsteigend': 'Ascending',
-    'Absteigend': 'Descending',
-    'Sortieren nach': 'Sort by',
-    'Alle': 'All',
-    'Keine': 'None',
-
     // ModuleView.svelte
     'Vorlesung': 'Lecture',
     'KP': 'Credits',
@@ -179,6 +169,7 @@ const dict: Record<string, string> = {
     'Fehler': 'error',
     'Nach oben': 'Move up',
     'Nach unten': 'Move down',
+    'Ziehen zum Umsortieren': 'Drag to reorder',
 
     // Shared / weekdays
     'Montag': 'Monday',
