@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import type { Database as BunDatabase } from "bun:sqlite";
 import { invalidateLecturesCache } from "./lecturesCache";
@@ -113,11 +113,51 @@ mkdirSync(DATA_DIR, { recursive: true });
 // We keep a cache of open Database instances to avoid reopening constantly.
 const dbCache = new Map<string, BunDatabase>();
 
+// Each semester+language combo gets its own subfolder (data/<periodeId>/<lang>/)
+// instead of one flat file per combo directly under DATA_DIR. This keeps the
+// data directory navigable once many semesters/languages pile up, and makes
+// it trivial to e.g. delete or back up "everything for one semester" as a
+// single folder.
+export function dbSubDir(periodeId: string, lang: string): string {
+    return join(DATA_DIR, periodeId, lang);
+}
+
+function dbFilePath(periodeId: string, lang: string): string {
+    return join(dbSubDir(periodeId, lang), "lectures.db");
+}
+
+// Older versions of this app stored one flat file per periode+lang directly
+// under DATA_DIR, e.g. "data/2026_de.db". The first time a combo is opened
+// under the new layout, move any such legacy file (plus its -wal/-shm
+// siblings) into the new subfolder instead of silently starting a fresh,
+// empty database next to the old one.
+function migrateLegacyDbFile(periodeId: string, lang: string, targetPath: string) {
+    if (existsSync(targetPath)) return;
+    const legacyPath = join(DATA_DIR, `${periodeId}_${lang}.db`);
+    if (!existsSync(legacyPath)) return;
+    for (const suffix of ["", "-wal", "-shm"]) {
+        const src = legacyPath + suffix;
+        const dest = targetPath + suffix;
+        if (existsSync(src)) {
+            try {
+                renameSync(src, dest);
+            } catch (err) {
+                console.error(`[db] Konnte alte Datenbankdatei ${src} nicht migrieren:`, err);
+            }
+        }
+    }
+}
+
 export function getDb(periodeId: string, lang: string): BunDatabase {
     const key = `${periodeId}_${lang}`;
     if (dbCache.has(key)) return dbCache.get(key)!;
 
-    const db = new DatabaseCtor(join(DATA_DIR, `${key}.db`));
+    const dir = dbSubDir(periodeId, lang);
+    mkdirSync(dir, { recursive: true });
+    const dbPath = dbFilePath(periodeId, lang);
+    migrateLegacyDbFile(periodeId, lang, dbPath);
+
+    const db = new DatabaseCtor(dbPath);
     db.exec(`PRAGMA journal_mode = WAL;`);
     initSchema(db);
     dbCache.set(key, db);
@@ -179,15 +219,34 @@ export function clearImportedData(periodeId: string, lang: string, type: "catalo
         clearImportMeta(db, ["lectures_imported_at", "lectures_success_count", "lectures_total_count"]);
     }
     invalidateLecturesCache(periodeId, lang);
-    // DELETE only frees the pages for reuse within the file — it doesn't
-    // shrink the file itself. VACUUM rebuilds the file to its actual
-    // current size, which matters here since lecture_details.raw_html
-    // rows (often the bulk of the file) were just wiped.
+    shrinkDbFile(db, periodeId, lang);
+}
+
+/**
+ * Reclaims disk space after rows were deleted. Two steps are needed, not
+ * just one:
+ *  - VACUUM rebuilds the main .db file to its actual current size — DELETE
+ *    alone only frees pages for reuse *within* the file, it never shrinks
+ *    the file itself.
+ *  - In WAL mode (which we always run in), recently written/deleted pages
+ *    can additionally sit in the .db-wal side file until a checkpoint
+ *    happens, so disk space isn't actually reclaimed on disk until that
+ *    file is truncated too — VACUUM alone does not guarantee that.
+ * If VACUUM is attempted while this connection still has an open
+ * transaction (e.g. an in-progress catalogue import that hasn't rolled
+ * back/committed yet), it throws rather than silently doing nothing — that
+ * failure used to be swallowed here, which is why "Cancel" and "delete"
+ * sometimes appeared to free the data but leave a multi-hundred-MB file
+ * behind with no indication why. It's now logged instead; callers that can
+ * run into this race (see import job cancellation) retry the shrink once
+ * the job has actually finished.
+ */
+export function shrinkDbFile(db: BunDatabase, periodeId: string, lang: string) {
     try {
         db.exec(`VACUUM`);
-    } catch {
-        // best effort — data is already deleted either way, a failed
-        // VACUUM just means disk space isn't reclaimed this time
+        db.exec(`PRAGMA wal_checkpoint(TRUNCATE);`);
+    } catch (err) {
+        console.error(`[db] Datei für ${periodeId}/${lang} konnte nicht verkleinert werden:`, err);
     }
 }
 

@@ -1,8 +1,8 @@
 import { json } from "@sveltejs/kit";
-import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
+import { getDb, setImportMeta, clearImportMeta, clearImportedData } from "$lib/server/db";
 import { parseLectureDetails } from "$lib/server/importer/parser";
 import { fetchLectureHtml } from "$lib/server/importer/unibas";
-import { startJob, getJob, jobKey } from "$lib/server/importJobs";
+import { startJob, getJob, jobKey, loadPersistedJob } from "$lib/server/importJobs";
 import { invalidateLecturesCache } from "$lib/server/lecturesCache";
 
 const BASE = "https://vorlesungsverzeichnis.unibas.ch";
@@ -430,18 +430,32 @@ export async function POST({ request }) {
         ? (log: (msg: string) => void, isCancelled: () => boolean) => runCatalogueImport(periodeId, lang, log, isCancelled)
         : (log: (msg: string) => void, isCancelled: () => boolean) => runLecturesImport(periodeId, lang, log, isCancelled);
 
-    const job = startJob(action, periodeId, lang, runner);
+    // If the job ends up cancelled, re-clear the data (and, crucially,
+    // retry the VACUUM/checkpoint) once the runner has actually stopped —
+    // the /api/import/cancel endpoint already does an immediate best-effort
+    // clear for instant UI feedback, but that can race with the runner
+    // still holding an open transaction (catalogue import), which makes the
+    // VACUUM inside it fail silently. Retrying here, after the runner's own
+    // promise has settled, guarantees the file actually shrinks.
+    const cleanupOnCancel = () => clearImportedData(periodeId, lang, action);
+
+    const job = startJob(action, periodeId, lang, runner, cleanupOnCancel);
 
     return json({ key: job.key, status: job.status, startedAt: job.startedAt });
 }
 
 // Quick status check for a single action/periode/lang combo (used on mount
-// to decide whether to resume polling for an already-running job).
+// to decide whether to resume polling for an already-running job). Falls
+// back to the persisted log file if there's no in-memory job (e.g. server
+// was restarted, or this combo simply isn't the currently-running one).
 export async function GET({ url }) {
     const action = url.searchParams.get("action") ?? "";
     const periodeId = url.searchParams.get("periodeId") ?? "";
     const lang = url.searchParams.get("lang") ?? "";
     const job = getJob(jobKey(action, periodeId, lang));
-    if (!job) return json({ status: "idle", logs: [] });
-    return json({ status: job.status, logs: job.logs, error: job.error });
+    if (job) return json({ status: job.status, logs: job.logs, error: job.error });
+
+    const persisted = loadPersistedJob(action, periodeId, lang);
+    if (!persisted) return json({ status: "idle", logs: [] });
+    return json({ status: persisted.status, logs: persisted.logs, error: persisted.error });
 }

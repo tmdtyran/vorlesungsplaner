@@ -153,6 +153,9 @@ const dict: Record<string, string> = {
     'Katalog EN': 'Catalog EN',
     'Details DE': 'Details DE',
     'Details EN': 'Details EN',
+    'Katalog': 'Catalog',
+    'Alle Vorlesungen': 'All Lectures',
+    'Kein Log vorhanden.': 'No log available.',
 
     // Shared / weekdays
     'Montag': 'Monday',
@@ -189,6 +192,9 @@ const enToDe: Record<string, string> = {
     'Fetch Semesters': 'Semester abrufen',
     'Import Catalogue': 'Katalog importieren',
     'Import All Lectures': 'Alle Vorlesungen importieren',
+    'Katalog': 'Katalog',
+    'Alle Vorlesungen': 'Alle Vorlesungen',
+    'Kein Log vorhanden.': 'Kein Log vorhanden.',
 };
 
 // Free-text schedule strings (e.g. "wöchentlich Montag 16:15-18:00", built

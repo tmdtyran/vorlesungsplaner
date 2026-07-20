@@ -27,7 +27,12 @@ export async function POST({ request }) {
     // and rolls back/stops as soon as it notices, but we don't wait for it
     // here — clear the data right away so the UI/DB reflect the cancel
     // immediately rather than whatever partial state existed at the moment
-    // of the click.
+    // of the click. This can race with the runner still holding an open
+    // transaction (e.g. a catalogue import mid-ROLLBACK), which can make
+    // the VACUUM step silently fail here — startJob() registers a second,
+    // guaranteed cleanup pass (see cleanupOnCancel in /api/import) that
+    // runs once the runner has actually stopped, so the file still ends up
+    // shrunk even if this first attempt couldn't do it.
     clearImportedData(periodeId, lang, action);
 
     return json({ ok: true });

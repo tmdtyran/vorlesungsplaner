@@ -3,12 +3,26 @@
 // server (as long as the Node/Vite process stays alive) even if the client
 // disconnects, switches tabs, or reloads the page. Clients reconnect via
 // polling (see /api/import/logs) and replay accumulated logs from the start.
+//
+// The in-memory registry alone doesn't survive a server restart though, and
+// even while the server IS alive there was previously no way to see the log
+// of a finished (or still-running, from-before-restart) import after
+// navigating away and back — only the currently-selected semester/lang/action
+// combo's log lived in memory. Every job is therefore additionally persisted
+// to a small JSON file under the DB's own per-semester/per-language folder
+// (one file per import type — catalogue vs lectures), updated as the job
+// progresses, so both finished and in-progress logs can always be reloaded.
+
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { dbSubDir } from "./db";
 
 export type JobStatus = "running" | "done" | "error";
+export type ImportAction = "catalogue" | "lectures";
 
 export interface ImportJob {
     key: string;
-    action: "catalogue" | "lectures";
+    action: ImportAction;
     periodeId: string;
     lang: string;
     status: JobStatus;
@@ -17,12 +31,63 @@ export interface ImportJob {
     finishedAt: string | null;
     error: string | null;
     cancelRequested: boolean;
+    /** Called once the runner has actually stopped, only if the job was
+     *  cancelled — used to retry data cleanup/VACUUM after any in-flight
+     *  transaction from the runner has truly rolled back/committed. */
+    cleanupOnCancel?: () => void;
+}
+
+interface PersistedJob {
+    status: JobStatus;
+    logs: string[];
+    startedAt: string;
+    finishedAt: string | null;
+    error: string | null;
 }
 
 const jobs = new Map<string, ImportJob>();
 
 export function jobKey(action: string, periodeId: string, lang: string): string {
     return `${action}:${periodeId}:${lang}`;
+}
+
+function logFilePath(action: string, periodeId: string, lang: string): string {
+    return join(dbSubDir(periodeId, lang), "logs", `${action}.json`);
+}
+
+function persistJob(job: ImportJob) {
+    try {
+        const dir = join(dbSubDir(job.periodeId, job.lang), "logs");
+        mkdirSync(dir, { recursive: true });
+        const payload: PersistedJob = {
+            status: job.status,
+            logs: job.logs,
+            startedAt: job.startedAt,
+            finishedAt: job.finishedAt,
+            error: job.error
+        };
+        writeFileSync(logFilePath(job.action, job.periodeId, job.lang), JSON.stringify(payload));
+    } catch (err) {
+        // Best effort — a failed log write shouldn't ever interrupt an
+        // otherwise-successful import.
+        console.error(`[importJobs] Log konnte nicht gespeichert werden für ${job.key}:`, err);
+    }
+}
+
+/**
+ * Loads the persisted log for an action/periode/lang combo that has no
+ * currently in-memory job (e.g. after a server restart, or simply because
+ * the user is viewing the "other" import type's log while it isn't running).
+ * Returns null if nothing was ever imported for that combo.
+ */
+export function loadPersistedJob(action: string, periodeId: string, lang: string): PersistedJob | null {
+    try {
+        const path = logFilePath(action, periodeId, lang);
+        if (!existsSync(path)) return null;
+        return JSON.parse(readFileSync(path, "utf-8")) as PersistedJob;
+    } catch {
+        return null;
+    }
 }
 
 export function getJob(key: string): ImportJob | undefined {
@@ -56,14 +121,17 @@ export function cancelJob(key: string): boolean {
  * `isCancelled()` callback it should check periodically, breaking out and
  * returning early if it becomes true; it should throw on fatal failure and
  * otherwise resolve when done.
+ * `cleanupOnCancel`, if given, is invoked once the runner has actually
+ * settled (resolved/rejected) if — and only if — the job was cancelled.
  * Returns the (possibly pre-existing, already-running) job immediately —
  * the caller does NOT await job completion.
  */
 export function startJob(
-    action: "catalogue" | "lectures",
+    action: ImportAction,
     periodeId: string,
     lang: string,
-    runner: (log: (msg: string) => void, isCancelled: () => boolean) => Promise<void>
+    runner: (log: (msg: string) => void, isCancelled: () => boolean) => Promise<void>,
+    cleanupOnCancel?: () => void
 ): ImportJob {
     const key = jobKey(action, periodeId, lang);
     const existing = jobs.get(key);
@@ -81,12 +149,15 @@ export function startJob(
         startedAt: new Date().toISOString(),
         finishedAt: null,
         error: null,
-        cancelRequested: false
+        cancelRequested: false,
+        cleanupOnCancel
     };
     jobs.set(key, job);
+    persistJob(job);
 
     const log = (msg: string) => {
         job.logs.push(msg);
+        persistJob(job);
     };
     const isCancelled = () => job.cancelRequested;
 
@@ -103,6 +174,21 @@ export function startJob(
             job.error = job.cancelRequested ? "Abgebrochen" : (err?.message ?? String(err));
             job.finishedAt = new Date().toISOString();
             log(`Fehler: ${job.error}`);
+        })
+        .finally(() => {
+            persistJob(job);
+            if (job.cancelRequested && job.cleanupOnCancel) {
+                // The runner has now truly stopped (any transaction it had
+                // open has been rolled back/committed), so cleanup — e.g.
+                // re-clearing data and retrying the VACUUM — is safe here
+                // even if an earlier "immediate" cleanup attempt raced with
+                // the runner and partially failed.
+                try {
+                    job.cleanupOnCancel();
+                } catch (err) {
+                    console.error(`[importJobs] cleanupOnCancel fehlgeschlagen für ${key}:`, err);
+                }
+            }
         });
 
     return job;

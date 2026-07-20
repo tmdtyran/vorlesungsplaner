@@ -1,5 +1,6 @@
 import { json } from "@sveltejs/kit";
-import { readdirSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { getDb, getImportMeta, DATA_DIR } from "$lib/server/db";
 
 export interface ImportStatusEntry {
@@ -12,36 +13,55 @@ export interface ImportStatusEntry {
     lecturesTotalCount: number | null;
 }
 
-export async function GET() {
-    let files: string[] = [];
+function isDir(path: string): boolean {
     try {
-        files = readdirSync(DATA_DIR).filter(f => f.endsWith(".db") && f !== "default.db" && !f.includes("-wal") && !f.includes("-shm"));
+        return statSync(path).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+export async function GET() {
+    // Layout: DATA_DIR/<periodeId>/<lang>/lectures.db — one subfolder per
+    // semester, one subfolder per language inside it.
+    let periodeDirs: string[] = [];
+    try {
+        periodeDirs = readdirSync(DATA_DIR).filter(
+            (name) => /^\d+$/.test(name) && isDir(join(DATA_DIR, name))
+        );
     } catch {
         return json([]);
     }
 
     const entries: ImportStatusEntry[] = [];
 
-    for (const file of files) {
-        const match = file.match(/^(\d+)_(de|en)\.db$/);
-        if (!match) continue;
-        const [, periodeId, lang] = match;
-
+    for (const periodeId of periodeDirs) {
+        let langDirs: string[] = [];
         try {
-            const db = getDb(periodeId, lang);
-            const meta = getImportMeta(db);
-
-            entries.push({
-                periodeId,
-                lang,
-                catalogImportedAt: meta.catalog_imported_at ?? null,
-                catalogLectureCount: meta.catalog_lecture_count ? parseInt(meta.catalog_lecture_count) : null,
-                lecturesImportedAt: meta.lectures_imported_at ?? null,
-                lecturesSuccessCount: meta.lectures_success_count ? parseInt(meta.lectures_success_count) : null,
-                lecturesTotalCount: meta.lectures_total_count ? parseInt(meta.lectures_total_count) : null
-            });
+            langDirs = readdirSync(join(DATA_DIR, periodeId)).filter(
+                (name) => (name === "de" || name === "en") && isDir(join(DATA_DIR, periodeId, name))
+            );
         } catch {
-            // skip unreadable db files
+            continue;
+        }
+
+        for (const lang of langDirs) {
+            try {
+                const db = getDb(periodeId, lang);
+                const meta = getImportMeta(db);
+
+                entries.push({
+                    periodeId,
+                    lang,
+                    catalogImportedAt: meta.catalog_imported_at ?? null,
+                    catalogLectureCount: meta.catalog_lecture_count ? parseInt(meta.catalog_lecture_count) : null,
+                    lecturesImportedAt: meta.lectures_imported_at ?? null,
+                    lecturesSuccessCount: meta.lectures_success_count ? parseInt(meta.lectures_success_count) : null,
+                    lecturesTotalCount: meta.lectures_total_count ? parseInt(meta.lectures_total_count) : null
+                });
+            } catch {
+                // skip unreadable db files
+            }
         }
     }
 

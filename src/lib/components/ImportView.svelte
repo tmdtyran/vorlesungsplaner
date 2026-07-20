@@ -1,6 +1,6 @@
 <script lang="ts">
     import { activeSemester, availableSemesters, setActiveSemester, getLabel, type SemesterOption } from '$lib/stores/semester.svelte';
-    import { importViewState, pollState } from '$lib/stores/importViewState.svelte';
+    import { importViewState, pollState, type ImportAction } from '$lib/stores/importViewState.svelte';
     import { t } from '$lib/i18n/translations';
 
     interface ImportStatusEntry {
@@ -14,10 +14,12 @@
     }
 
     interface RunningJob {
-        action: 'catalogue' | 'lectures';
+        action: ImportAction;
         periodeId: string;
         lang: string;
     }
+
+    const ACTIONS: ImportAction[] = ['catalogue', 'lectures'];
 
     let fetchingSemesters = $state(false);
     let importStatus = $state<ImportStatusEntry[]>([]);
@@ -27,7 +29,7 @@
         return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
     }
 
-    function isJobRunning(action: 'catalogue' | 'lectures', periodeId: string, lang: string): boolean {
+    function isJobRunning(action: ImportAction, periodeId: string, lang: string): boolean {
         return runningJobs.some(j => j.action === action && j.periodeId === periodeId && j.lang === lang);
     }
 
@@ -60,22 +62,40 @@
         }
     }
 
-    function startPolling(action: 'catalogue' | 'lectures', periodeId: string, lang: string) {
+    // Loads the (persisted or in-progress) log for one import type without
+    // touching polling/currentAction — used to populate the "other" type's
+    // log (the one not currently running) whenever it might have gone
+    // stale, e.g. on mount or after switching semester/lang.
+    async function loadLog(action: ImportAction, periodeId: string, lang: string) {
+        try {
+            const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=0`);
+            if (!res.ok) return;
+            const data = await res.json();
+            importViewState.logsByAction[action] = data.logs ?? [];
+            importViewState.logsSeenByAction[action] = data.total ?? (data.logs?.length ?? 0);
+            importViewState.statusByAction[action] = data.status ?? 'idle';
+        } catch {
+            // ignore — keep whatever we already have
+        }
+    }
+
+    function startPolling(action: ImportAction, periodeId: string, lang: string) {
         stopPolling();
         importViewState.currentAction = action;
 
         const poll = async () => {
             try {
-                const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=${importViewState.logsSeen}`);
+                const res = await fetch(`/api/import/logs?action=${action}&periodeId=${periodeId}&lang=${lang}&since=${importViewState.logsSeenByAction[action]}`);
                 if (!res.ok) return;
                 const data = await res.json();
                 if (data.logs?.length) {
-                    importViewState.logs = [...importViewState.logs, ...data.logs];
-                    importViewState.logsSeen += data.logs.length;
+                    importViewState.logsByAction[action] = [...importViewState.logsByAction[action], ...data.logs];
+                    importViewState.logsSeenByAction[action] += data.logs.length;
                 }
-                importViewState.jobStatus = data.status;
+                importViewState.statusByAction[action] = data.status;
                 if (data.status !== 'running') {
                     stopPolling();
+                    if (importViewState.currentAction === action) importViewState.currentAction = null;
                     await loadStatus();
                 }
             } catch {
@@ -103,10 +123,11 @@
         fetchingSemesters = false;
     }
 
-    async function runImport(action: 'catalogue' | 'lectures') {
-        importViewState.logs = [];
-        importViewState.logsSeen = 0;
-        importViewState.jobStatus = 'running';
+    async function runImport(action: ImportAction) {
+        importViewState.logsByAction[action] = [];
+        importViewState.logsSeenByAction[action] = 0;
+        importViewState.statusByAction[action] = 'running';
+        importViewState.viewedAction = action;
 
         try {
             const response = await fetch('/api/import', {
@@ -116,13 +137,13 @@
             });
             if (!response.ok) {
                 const err = await response.json().catch(() => ({}));
-                importViewState.logs = [`${t('Fehler:')} ${err.error ?? response.statusText}`];
-                importViewState.jobStatus = 'error';
+                importViewState.logsByAction[action] = [`${t('Fehler:')} ${err.error ?? response.statusText}`];
+                importViewState.statusByAction[action] = 'error';
                 return;
             }
         } catch (err: any) {
-            importViewState.logs = [`${t('Fehler:')} ${err?.message ?? err}`];
-            importViewState.jobStatus = 'error';
+            importViewState.logsByAction[action] = [`${t('Fehler:')} ${err?.message ?? err}`];
+            importViewState.statusByAction[action] = 'error';
             return;
         }
 
@@ -132,27 +153,33 @@
 
     // Checks the server for a currently running job for the active
     // semester/lang and, if found, syncs local state to it and (re)attaches
-    // polling. Does NOT touch existing state if nothing is running — so it's
-    // safe to call just to "reconcile", e.g. right after this component
-    // (re)mounts, without wiping out a finished job's log.
+    // polling. Also refreshes the (persisted) log of whichever action isn't
+    // running, so switching the log-view toggle always shows something
+    // current. Does NOT touch existing state if nothing is running for the
+    // polled action — so it's safe to call just to "reconcile", e.g. right
+    // after this component (re)mounts, without wiping out a finished job's
+    // log.
     async function detectRunningJob(): Promise<boolean> {
-        for (const action of ['catalogue', 'lectures'] as const) {
+        let foundRunning = false;
+        for (const action of ACTIONS) {
             try {
                 const res = await fetch(`/api/import?action=${action}&periodeId=${importViewState.importPeriodeId}&lang=${importViewState.importLang}`);
                 if (!res.ok) continue;
                 const data = await res.json();
                 if (data.status === 'running') {
-                    importViewState.logs = data.logs ?? [];
-                    importViewState.logsSeen = importViewState.logs.length;
-                    importViewState.jobStatus = 'running';
+                    importViewState.logsByAction[action] = data.logs ?? [];
+                    importViewState.logsSeenByAction[action] = importViewState.logsByAction[action].length;
+                    importViewState.statusByAction[action] = 'running';
                     startPolling(action, importViewState.importPeriodeId, importViewState.importLang);
-                    return true;
+                    foundRunning = true;
+                } else {
+                    await loadLog(action, importViewState.importPeriodeId, importViewState.importLang);
                 }
             } catch {
                 // ignore
             }
         }
-        return false;
+        return foundRunning;
     }
 
     // Called when the semester/lang selection genuinely changes — that's a
@@ -161,9 +188,9 @@
     // combo.
     async function checkForRunningJob() {
         stopPolling();
-        importViewState.logs = [];
-        importViewState.logsSeen = 0;
-        importViewState.jobStatus = 'idle';
+        importViewState.logsByAction = { catalogue: [], lectures: [] };
+        importViewState.logsSeenByAction = { catalogue: 0, lectures: 0 };
+        importViewState.statusByAction = { catalogue: 'idle', lectures: 'idle' };
         importViewState.currentAction = null;
         await detectRunningJob();
     }
@@ -205,7 +232,7 @@
         const statusInterval = setInterval(loadStatus, 4000);
         return () => clearInterval(statusInterval);
     });
-    async function handleDeleteData(type: 'catalogue' | 'lectures', periodeId: string, lang: string, label: string) {
+    async function handleDeleteData(type: ImportAction, periodeId: string, lang: string, label: string) {
         if (!confirm(`"${label}" ${t('wirklich löschen? Das kann nicht rückgängig gemacht werden.')}`)) return;
         try {
             const res = await fetch('/api/import/data', {
@@ -225,27 +252,32 @@
     }
 
     async function handleCancelImport() {
-        if (!importViewState.currentAction) return;
+        const action = importViewState.currentAction;
+        if (!action) return;
         try {
             const res = await fetch('/api/import/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: importViewState.currentAction, periodeId: importViewState.importPeriodeId, lang: importViewState.importLang })
+                body: JSON.stringify({ action, periodeId: importViewState.importPeriodeId, lang: importViewState.importLang })
             });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                importViewState.logs = [...importViewState.logs, `${t('Fehler beim Abbrechen:')} ${err.error ?? res.statusText}`];
+                importViewState.logsByAction[action] = [...importViewState.logsByAction[action], `${t('Fehler beim Abbrechen:')} ${err.error ?? res.statusText}`];
                 return;
             }
-            importViewState.logs = [...importViewState.logs, t('Abgebrochen — Daten gelöscht.')];
+            importViewState.logsByAction[action] = [...importViewState.logsByAction[action], t('Abgebrochen — Daten gelöscht.')];
         } catch (err: any) {
-            importViewState.logs = [...importViewState.logs, `${t('Fehler beim Abbrechen:')} ${err?.message ?? err}`];
+            importViewState.logsByAction[action] = [...importViewState.logsByAction[action], `${t('Fehler beim Abbrechen:')} ${err?.message ?? err}`];
         } finally {
             stopPolling();
-            importViewState.jobStatus = 'idle';
+            importViewState.statusByAction[action] = 'idle';
             importViewState.currentAction = null;
             await loadStatus();
         }
+    }
+
+    function actionLabel(action: ImportAction): string {
+        return action === 'catalogue' ? t('Katalog') : t('Alle Vorlesungen');
     }
 </script>
 
@@ -305,7 +337,7 @@
         </div>
 
         <div class="ml-auto flex gap-3">
-            {#if importViewState.jobStatus === 'running'}
+            {#if importViewState.currentAction}
                 <button
                     onclick={handleCancelImport}
                     class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700"
@@ -314,21 +346,21 @@
                 </button>
             {/if}
             <button
-                disabled={importViewState.jobStatus === 'running' || importViewState.importPeriodeId === 'default'}
+                disabled={importViewState.currentAction !== null || importViewState.importPeriodeId === 'default'}
                 onclick={() => runImport('catalogue')}
                 class="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-50"
             >
-                {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'catalogue'}
+                {#if importViewState.currentAction === 'catalogue'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 {t('Import Catalogue')}
             </button>
             <button
-                disabled={importViewState.jobStatus === 'running' || importViewState.importPeriodeId === 'default'}
+                disabled={importViewState.currentAction !== null || importViewState.importPeriodeId === 'default'}
                 onclick={() => runImport('lectures')}
                 class="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
             >
-                {#if importViewState.jobStatus === 'running' && importViewState.currentAction === 'lectures'}
+                {#if importViewState.currentAction === 'lectures'}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
                 {/if}
                 {t('Import All Lectures')}
@@ -421,20 +453,36 @@
             <div class="h-2.5 w-2.5 rounded-full bg-yellow-500"></div>
             <div class="h-2.5 w-2.5 rounded-full bg-green-500"></div>
             <span class="ml-2 text-xs text-slate-500 font-mono">{t('Import Log')}</span>
-            {#if importViewState.jobStatus === 'running'}
+
+            <!-- Katalog / Alle Vorlesungen log toggle -->
+            <div class="ml-2 flex overflow-hidden rounded-md border border-slate-700 text-xs font-mono">
+                {#each ACTIONS as action}
+                    <button
+                        onclick={() => (importViewState.viewedAction = action)}
+                        class="px-2 py-0.5 transition-colors {importViewState.viewedAction === action ? 'bg-slate-700 text-white' : 'text-slate-400 hover:bg-slate-800'}"
+                    >
+                        {actionLabel(action)}
+                        {#if importViewState.statusByAction[action] === 'running'}
+                            <span class="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse align-middle"></span>
+                        {/if}
+                    </button>
+                {/each}
+            </div>
+
+            {#if importViewState.statusByAction[importViewState.viewedAction] === 'running'}
                 <span class="flex items-center gap-1.5 text-xs text-amber-400 font-mono">
                     <span class="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse"></span> {t('läuft…')}
                 </span>
             {/if}
             {#if importViewState.importPeriodeId !== 'default'}
-                <span class="ml-auto text-xs text-slate-600 font-mono">{importViewState.importPeriodeId}_{importViewState.importLang}.db</span>
+                <span class="ml-auto text-xs text-slate-600 font-mono">{importViewState.importPeriodeId}/{importViewState.importLang}/lectures.db</span>
             {/if}
         </div>
         <div class="flex-1 overflow-y-auto p-4 font-mono text-sm">
-            {#if importViewState.logs.length === 0}
+            {#if importViewState.logsByAction[importViewState.viewedAction].length === 0}
                 <p class="text-slate-600">{t('Bereit. Klicke "Fetch Semesters" und dann einen Import-Button.')}</p>
             {:else}
-                {#each importViewState.logs as log}
+                {#each importViewState.logsByAction[importViewState.viewedAction] as log}
                     <p class="leading-6
                         {log.startsWith('✓') ? 'text-emerald-400' : log.startsWith('✗') || log.startsWith('Fehler') ? 'text-red-400' : 'text-slate-300'}
                     ">{log}</p>
