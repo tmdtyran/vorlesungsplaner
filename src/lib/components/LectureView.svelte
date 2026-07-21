@@ -270,13 +270,16 @@
         }
     });
 
-    function sortModeLabel(mode: 'alphabetical' | 'credits' | 'weekdays' | 'type'): string {
-        switch (mode) {
-            case 'alphabetical': return t('Alphabetisch');
-            case 'credits': return t('KP');
-            case 'weekdays': return t('Wochentage');
-            case 'type': return t('Vorlesungstyp');
-        }
+    const SORT_OPTIONS = [
+        { by: 'alphabetical' as const, dir: 'asc' as const },
+        { by: 'alphabetical' as const, dir: 'desc' as const },
+        { by: 'credits' as const, dir: 'asc' as const },
+        { by: 'credits' as const, dir: 'desc' as const }
+    ];
+
+    function sortOptionLabel(by: 'alphabetical' | 'credits', dir: 'asc' | 'desc'): string {
+        const base = by === 'alphabetical' ? t('Alphabetisch') : t('KP');
+        return `${base} ${dir === 'asc' ? t('Aufsteigend') : t('Absteigend')}`;
     }
 
     function toggleWeekday(day: string) {
@@ -309,7 +312,8 @@
     }
 
     let sortMenuOpen = $state(false);
-    let subMenuOpen = $state(false);
+    let weekdayMenuOpen = $state(false);
+    let typeMenuOpen = $state(false);
 
     const virtualFlat = $derived.by(() => virtualize(filteredLeft, ROW_HEIGHT_FLAT, lectureViewState.scrollTopFlat));
     const virtualHierarchy = $derived.by(() => virtualize(hierarchyFlatList, ROW_HEIGHT_HIERARCHY, lectureViewState.scrollTopHierarchy));
@@ -359,104 +363,87 @@
             />
         </div>
 
-        <!-- Sort/filter mode dropdown -->
+        <!-- Sort dropdown: Alphabetisch/KP × auf-/absteigend combined -->
         <div class="relative">
             <button
-                onclick={() => { sortMenuOpen = !sortMenuOpen; subMenuOpen = false; }}
+                onclick={() => { sortMenuOpen = !sortMenuOpen; weekdayMenuOpen = false; typeMenuOpen = false; }}
                 class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
             >
-                {sortModeLabel(lectureViewState.sortBy)} <span class="text-slate-400">▾</span>
+                {sortOptionLabel(lectureViewState.sortBy, lectureViewState.sortDirection)} <span class="text-slate-400">▾</span>
             </button>
             {#if sortMenuOpen}
                 <div class="fixed inset-0 z-10" onclick={() => sortMenuOpen = false}></div>
-                <div class="absolute left-0 top-full mt-1 z-20 w-40 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                    {#each (['alphabetical', 'credits', 'weekdays', 'type'] as const) as mode}
+                <div class="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {#each SORT_OPTIONS as opt}
                         <button
-                            onclick={() => { lectureViewState.sortBy = mode; sortMenuOpen = false; }}
-                            class="block w-full px-3 py-1.5 text-left text-xs hover:bg-indigo-50 {lectureViewState.sortBy === mode ? 'text-indigo-600 font-semibold' : 'text-slate-600'}"
-                        >{sortModeLabel(mode)}</button>
+                            onclick={() => { lectureViewState.sortBy = opt.by; lectureViewState.sortDirection = opt.dir; sortMenuOpen = false; }}
+                            class="block w-full px-3 py-1.5 text-left text-xs hover:bg-indigo-50 {lectureViewState.sortBy === opt.by && lectureViewState.sortDirection === opt.dir ? 'text-indigo-600 font-semibold' : 'text-slate-600'}"
+                        >{sortOptionLabel(opt.by, opt.dir)}</button>
                     {/each}
                 </div>
             {/if}
         </div>
 
-        <!-- Secondary control: asc/desc for alphabetical & KP, checkbox lists for weekdays & type -->
+        <!-- Weekday filter dropdown -->
         <div class="relative">
-            {#if lectureViewState.sortBy === 'alphabetical' || lectureViewState.sortBy === 'credits'}
-                <button
-                    onclick={() => subMenuOpen = !subMenuOpen}
-                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
-                >
-                    {lectureViewState.sortDirection === 'asc' ? t('Aufsteigend') : t('Absteigend')} <span class="text-slate-400">▾</span>
-                </button>
-                {#if subMenuOpen}
-                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
-                    <div class="absolute left-0 top-full mt-1 z-20 w-36 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                        {#each (['asc', 'desc'] as const) as dir}
-                            <button
-                                onclick={() => { lectureViewState.sortDirection = dir; subMenuOpen = false; }}
-                                class="block w-full px-3 py-1.5 text-left text-xs hover:bg-indigo-50 {lectureViewState.sortDirection === dir ? 'text-indigo-600 font-semibold' : 'text-slate-600'}"
-                            >{dir === 'asc' ? t('Aufsteigend') : t('Absteigend')}</button>
-                        {/each}
-                    </div>
-                {/if}
-            {:else if lectureViewState.sortBy === 'weekdays'}
-                <button
-                    onclick={() => subMenuOpen = !subMenuOpen}
-                    class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
-                >
-                    {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/{WEEKDAY_OPTIONS.length}) <span class="text-slate-400">▾</span>
-                </button>
-                {#if subMenuOpen}
-                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
-                    <div class="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                        {#each WEEKDAY_OPTIONS as day}
-                            <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={lectureViewState.weekdayFilter.has(day)}
-                                    onchange={() => toggleWeekday(day)}
-                                    class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
-                                />
-                                {t(day)}
-                            </label>
-                        {/each}
-                    </div>
-                {/if}
-            {:else if lectureViewState.sortBy === 'type'}
-                <div
-                    role="button"
-                    tabindex="0"
-                    onclick={() => subMenuOpen = !subMenuOpen}
-                    onkeydown={(e) => e.key === 'Enter' && (subMenuOpen = !subMenuOpen)}
-                    class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap cursor-pointer"
-                >
-                    <input
-                        type="checkbox"
-                        checked={allTypesSelected}
-                        use:indeterminate={someTypesSelected && !allTypesSelected}
-                        onclick={(e) => { e.stopPropagation(); toggleAllTypes(); }}
-                        class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
-                        title={t('Alle')}
-                    />
-                    {t('Vorlesungstyp')} ({lectureViewState.typeFilter?.size ?? 0}/{availableTypes.length}) <span class="text-slate-400">▾</span>
+            <button
+                onclick={() => { weekdayMenuOpen = !weekdayMenuOpen; sortMenuOpen = false; typeMenuOpen = false; }}
+                class="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap"
+            >
+                {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/{WEEKDAY_OPTIONS.length}) <span class="text-slate-400">▾</span>
+            </button>
+            {#if weekdayMenuOpen}
+                <div class="fixed inset-0 z-10" onclick={() => weekdayMenuOpen = false}></div>
+                <div class="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {#each WEEKDAY_OPTIONS as day}
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={lectureViewState.weekdayFilter.has(day)}
+                                onchange={() => toggleWeekday(day)}
+                                class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                            />
+                            {t(day)}
+                        </label>
+                    {/each}
                 </div>
-                {#if subMenuOpen}
-                    <div class="fixed inset-0 z-10" onclick={() => subMenuOpen = false}></div>
-                    <div class="absolute left-0 top-full mt-1 z-20 w-48 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-                        {#each availableTypes as type}
-                            <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={lectureViewState.typeFilter?.has(type) ?? false}
-                                    onchange={() => toggleType(type)}
-                                    class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
-                                />
-                                {type}
-                            </label>
-                        {/each}
-                    </div>
-                {/if}
+            {/if}
+        </div>
+
+        <!-- Vorlesungstyp filter dropdown -->
+        <div class="relative">
+            <div
+                role="button"
+                tabindex="0"
+                onclick={() => { typeMenuOpen = !typeMenuOpen; sortMenuOpen = false; weekdayMenuOpen = false; }}
+                onkeydown={(e) => e.key === 'Enter' && (typeMenuOpen = !typeMenuOpen)}
+                class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 whitespace-nowrap cursor-pointer"
+            >
+                <input
+                    type="checkbox"
+                    checked={allTypesSelected}
+                    use:indeterminate={someTypesSelected && !allTypesSelected}
+                    onclick={(e) => { e.stopPropagation(); toggleAllTypes(); }}
+                    class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                    title={t('Alle')}
+                />
+                {t('Vorlesungstyp')} ({lectureViewState.typeFilter?.size ?? 0}/{availableTypes.length}) <span class="text-slate-400">▾</span>
+            </div>
+            {#if typeMenuOpen}
+                <div class="fixed inset-0 z-10" onclick={() => typeMenuOpen = false}></div>
+                <div class="absolute left-0 top-full mt-1 z-20 w-48 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {#each availableTypes as type}
+                        <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={lectureViewState.typeFilter?.has(type) ?? false}
+                                onchange={() => toggleType(type)}
+                                class="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                            />
+                            {type}
+                        </label>
+                    {/each}
+                </div>
             {/if}
         </div>
         {#if loading}

@@ -18,12 +18,9 @@ export const lectureViewState = $state({
     scrollTopHierarchy: 0,
 
     // Sort/filter dropdown to the right of the search field (flat "Liste" mode).
-    // 'alphabetical'/'credits' are actual sort orders (with sortDirection);
-    // 'weekdays'/'type' switch the secondary control to a checkbox filter list
-    // instead — those filters keep applying even after switching sortBy away,
-    // so e.g. unchecking a weekday still hides those lectures while sorted
-    // alphabetically.
-    sortBy: 'alphabetical' as 'alphabetical' | 'credits' | 'weekdays' | 'type',
+    // sortBy/sortDirection control ordering; weekdayFilter/typeFilter are
+    // independent, always-visible filters (separate dropdowns, not modes).
+    sortBy: 'alphabetical' as 'alphabetical' | 'credits',
     sortDirection: 'asc' as 'asc' | 'desc',
     weekdayFilter: new Set<string>(['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Unregelmässig']),
     // null = not yet initialized from the loaded catalog; once the available
