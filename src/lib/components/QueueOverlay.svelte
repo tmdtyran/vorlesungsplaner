@@ -19,6 +19,7 @@
     import { availableSemesters, getLabel } from '$lib/stores/semester.svelte';
     import { t } from '$lib/i18n/translations';
     import { flip } from 'svelte/animate';
+    import { untrack } from 'svelte';
 
     interface QueueItem {
         id: string;
@@ -42,11 +43,26 @@
 
     // Local working copy so drag reordering feels instant instead of
     // waiting on a server round-trip + re-poll for every intermediate
-    // position. Only re-synced from the polled prop while nothing is being
-    // dragged, so an in-flight drag never gets clobbered by a poll tick.
+    // position. Order is intentionally "sticky": once dragged locally, it's
+    // kept even as fresh polls come in — only content (status/progress/
+    // error) is merged in from the latest prop, and items are added/removed
+    // to match. Without this, the moment the drag ends the next poll tick
+    // would briefly reflect the still-old server order before the reorder
+    // request's response arrives, producing a visible snap-back-then-jump.
     let items = $state<QueueItem[]>([...queueItems]);
     $effect(() => {
-        if (draggedId === null) items = [...queueItems];
+        if (draggedId !== null) return;
+        const byId = new Map(queueItems.map(i => [i.id, i]));
+        const merged: QueueItem[] = [];
+        for (const local of untrack(() => items)) {
+            const fresh = byId.get(local.id);
+            if (fresh) {
+                merged.push(fresh);
+                byId.delete(local.id);
+            }
+        }
+        for (const added of byId.values()) merged.push(added); // new items from elsewhere — appended
+        items = merged;
     });
 
     function findPair(list: QueueItem[], item: QueueItem): QueueItem | undefined {
