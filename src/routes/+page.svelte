@@ -173,14 +173,24 @@
     {#if showWarning}
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4">
             <div class="w-full max-w-sm rounded-xl bg-white p-6 text-center shadow-lg">
-                <p class="text-sm font-medium text-slate-700">das ist eine warnnachricht</p>
+                <div class="mb-3 flex justify-end">
+                    <select
+                        value={activeSemester.lang}
+                        onchange={(e) => setActiveSemester(activeSemester.periodeId, (e.target as HTMLSelectElement).value)}
+                        class="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
+                    >
+                        <option value="de">DE</option>
+                        <option value="en">EN</option>
+                    </select>
+                </div>
+                <p class="text-sm font-medium text-slate-700">{t('das ist eine warnnachricht')}</p>
                 <button
                     type="button"
                     onclick={dismissWarning}
                     class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
                 >
                     <span class="text-emerald-100">✅</span>
-                    ich habe verstanden
+                    {t('ich habe verstanden')}
                 </button>
             </div>
         </div>

@@ -15,6 +15,8 @@ const dict: Record<string, string> = {
     '— Import → Fetch Semesters —': '— Import → Fetch Semesters —',
     'Dunklen Modus aktivieren': 'Enable dark mode',
     'Hellen Modus aktivieren': 'Enable light mode',
+    'das ist eine warnnachricht': 'this is a warning message',
+    'ich habe verstanden': 'I understand',
 
     // LectureView.svelte
     'Liste': 'List',
