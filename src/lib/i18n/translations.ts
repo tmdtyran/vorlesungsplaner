@@ -186,8 +186,8 @@ const dict: Record<string, string> = {
     'Nach unten': 'Move down',
     'Ziehen zum Umsortieren': 'Drag to reorder',
     'ZIP importieren': 'Import ZIP',
-    'Semester-ZIP(s) auswählen und in den Datenordner entpacken (Dateiname = Semester-ID, z.B. 2026004.zip)':
-        'Select semester ZIP(s) and extract them into the data folder (filename = semester ID, e.g. 2026004.zip)',
+    'Semester-ZIP(s) auswählen und in den Datenordner entpacken (Root-Ordner in der ZIP = Semester-ID, z.B. 2026004/…)':
+        'Select semester ZIP(s) and extract them into the data folder (root folder inside the ZIP = semester ID, e.g. 2026004/…)',
     'ZIP-Import fehlgeschlagen.': 'ZIP import failed.',
     'Einige ZIPs konnten nicht importiert werden:': 'Some ZIPs could not be imported:',
 

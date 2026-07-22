@@ -460,7 +460,7 @@
                 disabled={zipImporting}
                 onclick={() => zipInputEl?.click()}
                 class="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
-                title={t('Semester-ZIP(s) auswählen und in den Datenordner entpacken (Dateiname = Semester-ID, z.B. 2026004.zip)')}
+                title={t('Semester-ZIP(s) auswählen und in den Datenordner entpacken (Root-Ordner in der ZIP = Semester-ID, z.B. 2026004/…)')}
             >
                 {#if zipImporting}
                     <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"></span>
