@@ -164,6 +164,29 @@ export function getDb(periodeId: string, lang: string): BunDatabase {
     return db;
 }
 
+/**
+ * Closes and evicts any cached connection for this periode+lang, if one is
+ * open. Must be called before a ZIP import overwrites that semester's
+ * lectures.db on disk — an already-open bun:sqlite handle keeps pointing at
+ * the old file's inode/WAL state, so writing new bytes underneath it
+ * without evicting first would leave the cache silently serving stale (or,
+ * with WAL, potentially corrupted-looking) data until the process restarts.
+ * The next getDb() call for this combo transparently reopens from the
+ * freshly-extracted file.
+ */
+export function closeDbForImport(periodeId: string, lang: string) {
+    const key = `${periodeId}_${lang}`;
+    const db = dbCache.get(key);
+    if (!db) return;
+    try {
+        db.close();
+    } catch (err) {
+        console.error(`[db] Konnte Verbindung für ${periodeId}/${lang} nicht schliessen:`, err);
+    }
+    dbCache.delete(key);
+    invalidateLecturesCache(periodeId, lang);
+}
+
 // Convenience: a "default" DB for when no semester is selected yet
 let _defaultDb: BunDatabase | null = null;
 export function getDefaultDb(): BunDatabase {

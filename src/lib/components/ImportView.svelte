@@ -39,8 +39,27 @@
     let queueItems = $state<QueueItem[]>([]);
     let queuePaused = $state(false);
     let queueOpen = $state(false);
+    let zipInputEl = $state<HTMLInputElement | undefined>(undefined);
+    let zipImporting = $state(false);
 
     const anyImportActive = $derived(queueItems.length > 0);
+
+    // ZIP-imported semesters (see handleZipImport) may not be in the
+    // official semester list from "Fetch Semesters" at all — importStatus
+    // reflects whatever data folders actually exist on disk regardless.
+    // Synthesize a display entry (label = periodeId, since we don't know
+    // the real semester name) for any such periodeId so it's still
+    // selectable/visible instead of silently missing from both the
+    // dropdown and the status table.
+    const displaySemesters = $derived.by(() => {
+        const known = new Set(availableSemesters.map(s => s.periodeId));
+        const extra = importStatus
+            .filter(s => !known.has(s.periodeId))
+            .map(s => s.periodeId)
+            .filter((id, idx, arr) => arr.indexOf(id) === idx)
+            .map(periodeId => ({ periodeId, label_de: periodeId, label_en: periodeId }));
+        return [...availableSemesters, ...extra];
+    });
 
     function statusFor(periodeId: string, lang: string): ImportStatusEntry | null {
         return importStatus.find(s => s.periodeId === periodeId && s.lang === lang) ?? null;
@@ -333,6 +352,41 @@
         }
     }
 
+    async function handleZipFilesSelected(e: Event) {
+        const input = e.currentTarget as HTMLInputElement;
+        const files = input.files;
+        if (!files || files.length === 0) return;
+
+        zipImporting = true;
+        try {
+            const formData = new FormData();
+            for (const file of files) formData.append('files', file);
+
+            const res = await fetch('/api/import/zip', { method: 'POST', body: formData });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok) {
+                alert(data.error ?? t('ZIP-Import fehlgeschlagen.'));
+            } else {
+                const results: { filename: string; periodeId: string | null; ok: boolean; error?: string }[] = data.results ?? [];
+                const failed = results.filter(r => !r.ok);
+                if (failed.length > 0) {
+                    alert(
+                        `${t('Einige ZIPs konnten nicht importiert werden:')}\n` +
+                        failed.map(f => `${f.filename}: ${f.error}`).join('\n')
+                    );
+                }
+            }
+        } catch (err: any) {
+            alert(`${t('ZIP-Import fehlgeschlagen.')} ${err?.message ?? err}`);
+        } finally {
+            zipImporting = false;
+            input.value = ''; // allow re-selecting the same file(s) again later
+            await loadStatus();
+            await loadQueue();
+        }
+    }
+
     function actionLabel(action: ImportAction): string {
         return action === 'catalogue' ? t('Katalog') : t('Alle Vorlesungen');
     }
@@ -358,13 +412,13 @@
 
         <div class="flex flex-col gap-1">
             <label for="import-semester" class="text-xs font-medium text-slate-500 uppercase tracking-wide">{t('Semester')}</label>
-            {#if availableSemesters.length > 0}
+            {#if displaySemesters.length > 0}
                 <select
                     id="import-semester"
                     bind:value={importViewState.importPeriodeId}
                     class="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 focus:outline-none"
                 >
-                    {#each availableSemesters as s}
+                    {#each displaySemesters as s}
                         <option value={s.periodeId}>
                             {importViewState.importLang === 'de' ? s.label_de : s.label_en}
                         </option>
@@ -394,6 +448,28 @@
         </div>
 
         <div class="ml-auto flex items-center gap-3">
+            <input
+                type="file"
+                accept=".zip"
+                multiple
+                bind:this={zipInputEl}
+                onchange={handleZipFilesSelected}
+                class="hidden"
+            />
+            <button
+                disabled={zipImporting}
+                onclick={() => zipInputEl?.click()}
+                class="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50"
+                title={t('Semester-ZIP(s) auswählen und in den Datenordner entpacken (Dateiname = Semester-ID, z.B. 2026004.zip)')}
+            >
+                {#if zipImporting}
+                    <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-400 border-t-transparent"></span>
+                {:else}
+                    📦
+                {/if}
+                {t('ZIP importieren')}
+            </button>
+
             <button
                 onclick={() => (queueOpen = !queueOpen)}
                 class="relative flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
@@ -451,7 +527,7 @@
     {/if}
 
     <!-- Import status overview -->
-    {#if availableSemesters.length > 0}
+    {#if displaySemesters.length > 0}
         <div class="rounded-xl border border-slate-200 overflow-hidden">
             <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2">
                 <span class="text-xs font-semibold text-slate-600 uppercase tracking-wide">{t('Import-Status')}</span>
@@ -469,7 +545,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {#each availableSemesters as s}
+                        {#each displaySemesters as s}
                             {@const de = statusFor(s.periodeId, 'de')}
                             {@const en = statusFor(s.periodeId, 'en')}
                             <tr class="border-b border-slate-100 hover:bg-slate-50">
