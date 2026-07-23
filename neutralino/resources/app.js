@@ -96,7 +96,7 @@ async function startServer() {
     appendOutput(`Starte: ${binPath}`);
     appendOutput(`Arbeitsverzeichnis: ${platformDir}`);
     appendOutput(
-        `Zum manuellen Nachstellen: "${binPath}" --data-dir="${appDataDir}" --assets-dir="${assetsDir}"`
+        `Zum manuellen Nachstellen: BODY_SIZE_LIMIT=Infinity "${binPath}" --data-dir="${appDataDir}" --assets-dir="${assetsDir}"`
     );
 
     // WICHTIG: Diesmal eine ECHTE Single-File-Executable via
@@ -116,8 +116,20 @@ async function startServer() {
     // spawnProcess liefert eine von Neutralino selbst getrackte Prozess-ID,
     // die sich über updateSpawnedProcess(id, "exit") zuverlässig beenden
     // lässt (siehe windowClose unten).
+    // adapter-node rejects request bodies over 512K by default (its
+    // BODY_SIZE_LIMIT env var) - fine under `bun run dev` (Vite's own dev
+    // server, no such limit), but the packaged server enforces it and a
+    // semester ZIP import easily exceeds 512K, giving a 413. Set it to
+    // Infinity for this spawned process only, rather than baking a fixed
+    // number in - large multi-semester ZIPs shouldn't hit an artificial
+    // ceiling either. Env-var-inline syntax differs by shell, hence the
+    // NL_OS branch (spawnProcess runs the command through cmd.exe on
+    // Windows, /bin/sh elsewhere).
+    const bodySizeLimitPrefix =
+        NL_OS === "Windows" ? "set BODY_SIZE_LIMIT=Infinity&& " : "BODY_SIZE_LIMIT=Infinity ";
+
     serverProcess = await Neutralino.os.spawnProcess(
-        `${binPath} --data-dir=${appDataDir} --assets-dir=${assetsDir}`,
+        `${bodySizeLimitPrefix}${binPath} --data-dir=${appDataDir} --assets-dir=${assetsDir}`,
         platformDir
     );
 
