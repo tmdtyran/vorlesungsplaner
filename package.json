@@ -7,7 +7,6 @@
 	"scripts": {
 		"dev": "bun --bun vite dev",
 		"build": "bun --bun vite build",
-		"import": "bun scripts/importLectures.ts",
 		"preview": "bun --bun vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -16,7 +15,6 @@
 		"format": "prettier --write .",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run",
-		"catalog": "bun scripts/importCatalog.ts",
 		"build:desktop-server": "bun scripts/build-desktop-server.ts --skip-neu-build",
 		"build:desktop": "bun scripts/build-desktop-server.ts",
 		"dev:desktop": "bun scripts/run-desktop-dev.ts"
