@@ -352,6 +352,20 @@
         }
     }
 
+    // Reads a File as base64 in chunks — avoids the call-stack overflow
+    // that String.fromCharCode(...bigArray) hits on larger files, and
+    // avoids holding one giant intermediate string longer than necessary.
+    async function fileToBase64(file: File): Promise<string> {
+        const buffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 0x8000;
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+        }
+        return btoa(binary);
+    }
+
     async function handleZipFilesSelected(e: Event) {
         const input = e.currentTarget as HTMLInputElement;
         const files = input.files;
@@ -359,10 +373,15 @@
 
         zipImporting = true;
         try {
-            const formData = new FormData();
-            for (const file of files) formData.append('files', file);
+            const payloadFiles = await Promise.all(
+                [...files].map(async (file) => ({ name: file.name, dataBase64: await fileToBase64(file) }))
+            );
 
-            const res = await fetch('/api/import/zip', { method: 'POST', body: formData });
+            const res = await fetch('/api/import/zip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ files: payloadFiles })
+            });
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {

@@ -12,6 +12,18 @@ import { DATA_DIR, closeDbForImport } from "$lib/server/db";
 // name(s) actually inside the archive. Extracting the whole archive
 // straight into DATA_DIR reproduces that structure exactly, since every
 // entry's path already starts with "<periodeId>/...".
+//
+// Body is plain JSON — { files: [{ name, dataBase64 }] } — rather than
+// multipart/form-data on purpose: SvelteKit's built-in CSRF guard blocks
+// POSTs with a form-data/urlencoded/text-plain content-type whenever the
+// request's Origin header doesn't match the server's own origin, which is
+// exactly what happens when this app is packaged as a Neutralino desktop
+// app (the embedded page's origin isn't http://127.0.0.1:<port>, so a
+// multipart upload got a 403 there even though it worked fine under
+// `bun run dev`). application/json isn't one of the content-types that
+// guard applies to, so shipping the files base64-encoded inside a normal
+// JSON body sidesteps the mismatch entirely without having to weaken CSRF
+// protection globally for every other route.
 export interface ZipImportResult {
     filename: string;
     periodeId: string;
@@ -21,9 +33,14 @@ export interface ZipImportResult {
 
 const PERIODE_ID_PATTERN = /^\d+$/;
 
+interface ZipUpload {
+    name: string;
+    dataBase64: string;
+}
+
 export async function POST({ request }) {
-    const form = await request.formData();
-    const files = form.getAll("files").filter((f): f is File => f instanceof File);
+    const body = await request.json();
+    const files: ZipUpload[] = Array.isArray(body?.files) ? body.files : [];
 
     if (files.length === 0) {
         return json({ error: "Keine Dateien erhalten." }, { status: 400 });
@@ -33,7 +50,7 @@ export async function POST({ request }) {
 
     for (const file of files) {
         try {
-            const buffer = Buffer.from(await file.arrayBuffer());
+            const buffer = Buffer.from(file.dataBase64, "base64");
             const zip = new AdmZip(buffer);
 
             // Discover which semester(s) this ZIP actually contains by
