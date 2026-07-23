@@ -244,7 +244,7 @@
             </span>
             <div class="ml-auto flex items-center gap-2 shrink-0">
                 <button
-                    onclick={() => window.open(lectureVvzUrl(full.unibasId), '_blank', 'noopener,noreferrer')}
+                    onclick={() => full && window.open(lectureVvzUrl(full.unibasId), '_blank', 'noopener,noreferrer')}
                     class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
                     title={t("Im Vorlesungsverzeichnis öffnen")}
                 >↗</button>

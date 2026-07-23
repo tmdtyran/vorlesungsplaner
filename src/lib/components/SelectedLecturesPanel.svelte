@@ -274,6 +274,7 @@
             {:else}
                 {#each filteredLectures as sel (sel.catalog.unibas_id)}
                     {@const isDragged = sel.catalog.unibas_id === draggedId}
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -- role and tabindex are paired via the same isDragged condition below, so they're always consistent at runtime -->
                     <div
                         role={isDragged ? undefined : 'button'}
                         tabindex={isDragged ? undefined : 0}

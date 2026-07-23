@@ -49,7 +49,7 @@
     // to match. Without this, the moment the drag ends the next poll tick
     // would briefly reflect the still-old server order before the reorder
     // request's response arrives, producing a visible snap-back-then-jump.
-    let items = $state<QueueItem[]>([...queueItems]);
+    let items = $state<QueueItem[]>(untrack(() => [...queueItems]));
     $effect(() => {
         if (draggedId !== null) return;
         const byId = new Map(queueItems.map(i => [i.id, i]));
@@ -294,8 +294,10 @@
     <div
         class="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
         onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        tabindex="-1"
     >
         <div class="flex items-center justify-between border-b border-slate-200 px-5 py-3">
             <h2 class="text-sm font-semibold text-slate-800">{t('Warteschlange')}</h2>

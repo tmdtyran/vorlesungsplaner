@@ -48,7 +48,7 @@
     let selectedFromRight = $state(false);
     let loading = $state(false);
 
-    function toggleExpand(key: number, e: MouseEvent) {
+    function toggleExpand(key: number, e: MouseEvent | KeyboardEvent) {
         e.stopPropagation();
         const next = new Set(lectureViewState.expandedKeys);
         if (next.has(key)) next.delete(key);
@@ -372,7 +372,7 @@
                 {sortOptionLabel(lectureViewState.sortBy, lectureViewState.sortDirection)} <span class="text-slate-400">▾</span>
             </button>
             {#if sortMenuOpen}
-                <div class="fixed inset-0 z-10" onclick={() => sortMenuOpen = false}></div>
+                <div class="fixed inset-0 z-10" onclick={() => sortMenuOpen = false} role="presentation"></div>
                 <div class="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     {#each SORT_OPTIONS as opt}
                         <button
@@ -393,7 +393,7 @@
                 {t('Wochentage')} ({lectureViewState.weekdayFilter.size}/{WEEKDAY_OPTIONS.length}) <span class="text-slate-400">▾</span>
             </button>
             {#if weekdayMenuOpen}
-                <div class="fixed inset-0 z-10" onclick={() => weekdayMenuOpen = false}></div>
+                <div class="fixed inset-0 z-10" onclick={() => weekdayMenuOpen = false} role="presentation"></div>
                 <div class="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     {#each WEEKDAY_OPTIONS as day}
                         <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
@@ -430,7 +430,7 @@
                 {t('Vorlesungstyp')} ({lectureViewState.typeFilter?.size ?? 0}/{availableTypes.length}) <span class="text-slate-400">▾</span>
             </div>
             {#if typeMenuOpen}
-                <div class="fixed inset-0 z-10" onclick={() => typeMenuOpen = false}></div>
+                <div class="fixed inset-0 z-10" onclick={() => typeMenuOpen = false} role="presentation"></div>
                 <div class="absolute left-0 top-full mt-1 z-20 w-48 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     {#each availableTypes as type}
                         <label class="flex items-center gap-2 px-3 py-1.5 text-xs text-slate-600 hover:bg-indigo-50 cursor-pointer">
