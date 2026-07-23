@@ -120,10 +120,33 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
         const timeSlots: { frequency: string; weekday: string; start: string; end: string }[] = [];
 
         for (const sp of spanMatches) {
-            const text = sp[1].replace(/\s+/g, ' ').trim();
+            // When there is no lecturer, the source markup still emits a leading
+            // "- " before the schedule (e.g. "- wöchentlich: Montag 16.15-20.00").
+            // Strip that bare dash so it isn't mistaken for a "Lecturer - Schedule" separator.
+            const text = sp[1].replace(/\s+/g, ' ').trim().replace(/^-\s+/, '');
             const dashIdx = text.indexOf(' - ');
-            const lecturerPart = dashIdx >= 0 ? text.slice(0, dashIdx).trim() : text;
-            const schedulePart = dashIdx >= 0 ? text.slice(dashIdx + 3).trim() : '';
+            let lecturerPart = dashIdx >= 0 ? text.slice(0, dashIdx).trim() : text;
+            let schedulePart = dashIdx >= 0 ? text.slice(dashIdx + 3).trim() : '';
+
+            // No " - " separator found: this is either just a lecturer name, or —
+            // when there is no lecturer at all — a schedule string of the form
+            // "<Frequency>: <Weekday> HH.MM-HH.MM" or, for irregular/single-session
+            // courses, "<Frequency>: Siehe Einzeltermine" (no weekday/time at all).
+            // Detect either shape via the frequency keyword so it isn't stored as
+            // the lecturer.
+            if (!schedulePart) {
+                // A ":" with no " - " separator can only be a schedule string
+                // (e.g. "wöchentlich: Montag 16.15-20.00" or, for irregular/
+                // single-session courses, "unregelmässig: Siehe Einzeltermine").
+                // Real lecturer names never contain a colon, so this alone is
+                // enough to tell schedule-only spans apart — no need to match
+                // a fixed list of frequency keywords.
+                const freqOnlyMatch = lecturerPart.match(/^([^:]+):\s*(.+)$/);
+                if (freqOnlyMatch) {
+                    schedulePart = lecturerPart;
+                    lecturerPart = '';
+                }
+            }
 
             if (!lecturer && lecturerPart) lecturer = lecturerPart;
 

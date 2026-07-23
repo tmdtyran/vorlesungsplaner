@@ -170,11 +170,19 @@ function parseLeafTitle(raw: string): {
 
         // No " - " separator found: this is either just a lecturer name, or —
         // when there is no lecturer at all — a schedule string of the form
-        // "<Frequency>: <Weekday> HH.MM-HH.MM". Detect the latter so it isn't
-        // stored as the lecturer.
+        // "<Frequency>: <Weekday> HH.MM-HH.MM" or, for irregular/single-session
+        // courses, "<Frequency>: Siehe Einzeltermine" (no weekday/time at all).
+        // Detect either shape via the frequency keyword so it isn't stored as
+        // the lecturer.
         if (!schedulePart) {
+            // A ":" with no " - " separator can only be a schedule string
+            // (e.g. "wöchentlich: Montag 16.15-20.00" or, for irregular/
+            // single-session courses, "unregelmässig: Siehe Einzeltermine").
+            // Real lecturer names never contain a colon, so this alone is
+            // enough to tell schedule-only spans apart — no need to match
+            // a fixed list of frequency keywords.
             const freqOnlyMatch = lecturerPart.match(/^([^:]+):\s*(.+)$/);
-            if (freqOnlyMatch && /\d{2}[.:]\d{2}/.test(freqOnlyMatch[2])) {
+            if (freqOnlyMatch) {
                 schedulePart = lecturerPart;
                 lecturerPart = '';
             }
