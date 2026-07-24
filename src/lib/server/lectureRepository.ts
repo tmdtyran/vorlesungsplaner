@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 import { parseFullLectureDetails } from "./importer/parser";
+import { getResolvedCatalog, type ResolvedCatalogEntry } from "./catalogResolver";
 
 export interface CatalogLecture {
     id: number;
@@ -50,63 +51,68 @@ export interface LectureDetailEvent {
     room: string;
 }
 
-// Correlated subquery producing a human-readable schedule summary
-// (e.g. "wöchentlich Montag 16:15-18:00") for a given lecture_catalog row.
-// DISTINCT guards against duplicate identical time-slot rows (e.g. from
-// titles that repeat the same schedule markup twice).
-const SCHEDULE_SUBQUERY = `(
-    SELECT GROUP_CONCAT(sched, ' | ') FROM (
-        SELECT DISTINCT
-            TRIM(COALESCE(frequency || ' ', '') || weekday || ' ' || start_time || '-' || end_time) AS sched
-        FROM lecture_times
-        WHERE lecture_catalog_id = lecture_catalog.id
-        ORDER BY weekday, start_time
-    )
-) AS schedule`;
+function toCatalogLecture(entry: ResolvedCatalogEntry): CatalogLecture {
+    return {
+        id: entry.id,
+        hierarchy_key: entry.hierarchy_key,
+        unibas_id: entry.unibas_id,
+        course_number: entry.course_number,
+        title: entry.title,
+        type_label: entry.type_label,
+        credits: entry.credits,
+        lecturer: entry.lecturer,
+        parent_key: entry.parent_key,
+        node_type: entry.node_type,
+        depth: entry.depth,
+        schedule: entry.schedule
+    };
+}
 
 export function getAllLectures(periodeId: string, lang: string): CatalogLecture[] {
-    const db = getDb(periodeId, lang);
+    const catalog = getResolvedCatalog(periodeId, lang);
+
     // A lecture can be cross-listed under multiple faculties/programs and thus
     // appear at several hierarchy positions with the same unibas_id. The flat
-    // "all lectures" list should show each real lecture only once — folders/
-    // groups (unibas_id IS NULL) are left untouched since flat mode filters
-    // those out client-side anyway.
-    return db.prepare(`
-        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE unibas_id IS NULL
-        UNION ALL
-        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE id IN (
-            SELECT MIN(id) FROM lecture_catalog
-            WHERE unibas_id IS NOT NULL
-            GROUP BY unibas_id
-        )
-        ORDER BY title COLLATE NOCASE
-    `).all() as CatalogLecture[];
+    // "all lectures" list should show each real lecture only once (the
+    // lowest-id placement) — folders/groups (unibas_id === null) are left
+    // untouched since flat mode filters those out client-side anyway.
+    const bestByUnibasId = new Map<number, ResolvedCatalogEntry>();
+    const groupsAndFolders: ResolvedCatalogEntry[] = [];
+    for (const entry of catalog) {
+        if (entry.unibas_id === null) {
+            groupsAndFolders.push(entry);
+            continue;
+        }
+        const existing = bestByUnibasId.get(entry.unibas_id);
+        if (!existing || entry.id < existing.id) bestByUnibasId.set(entry.unibas_id, entry);
+    }
+
+    const result = [...groupsAndFolders, ...bestByUnibasId.values()].map(toCatalogLecture);
+    result.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }));
+    return result;
 }
 
 export function getLecturesHierarchy(periodeId: string, lang: string): CatalogLecture[] {
-    const db = getDb(periodeId, lang);
-    return db.prepare(`
-        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog ORDER BY hierarchy_key
-    `).all() as CatalogLecture[];
+    // getResolvedCatalog already reads rows ORDER BY hierarchy_key.
+    return getResolvedCatalog(periodeId, lang).map(toCatalogLecture);
 }
 
 export function getCatalogEntryByUnibasId(unibasId: number, periodeId: string, lang: string): CatalogLecture | null {
-    const db = getDb(periodeId, lang);
-    return db.prepare(`
-        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog WHERE unibas_id = ? ORDER BY id LIMIT 1
-    `).get(unibasId) as CatalogLecture | null;
+    const matches = getResolvedCatalog(periodeId, lang).filter(e => e.unibas_id === unibasId);
+    if (matches.length === 0) return null;
+    const entry = matches.reduce((a, b) => (a.id <= b.id ? a : b));
+    return toCatalogLecture(entry);
 }
 
 // Public-facing lookup by course number (e.g. "65935-01"), the identifier
 // shown before every lecture title in listings — used by the Details tab
 // search field instead of the internal unibas_id.
 export function getCatalogEntryByCourseNumber(courseNumber: string, periodeId: string, lang: string): CatalogLecture | null {
-    const db = getDb(periodeId, lang);
-    return db.prepare(`
-        SELECT *, ${SCHEDULE_SUBQUERY} FROM lecture_catalog
-        WHERE course_number = ? AND unibas_id IS NOT NULL
-        ORDER BY id LIMIT 1
-    `).get(courseNumber) as CatalogLecture | null;
+    const matches = getResolvedCatalog(periodeId, lang)
+        .filter(e => e.unibas_id !== null && e.course_number === courseNumber);
+    if (matches.length === 0) return null;
+    const entry = matches.reduce((a, b) => (a.id <= b.id ? a : b));
+    return toCatalogLecture(entry);
 }
 
 // A lecture can be cross-listed under multiple hierarchy branches. For each
@@ -131,14 +137,20 @@ function getModulesForLecture(db: ReturnType<typeof getDb>, unibasId: number): s
     return rows.map(r => r.title.replace(/^Modul(e)?:\s*/i, "").trim());
 }
 
-function getRecurringTimesForLecture(db: ReturnType<typeof getDb>, unibasId: number): RecurringTime[] {
-    return db.prepare(`
-        SELECT DISTINCT lt.frequency, lt.weekday, lt.start_time, lt.end_time
-        FROM lecture_times lt
-        JOIN lecture_catalog lc ON lc.id = lt.lecture_catalog_id
-        WHERE lc.unibas_id = ?
-        ORDER BY lt.weekday, lt.start_time
-    `).all(unibasId) as RecurringTime[];
+function getRecurringTimesForLecture(periodeId: string, lang: string, unibasId: number): RecurringTime[] {
+    const seen = new Set<string>();
+    const times: RecurringTime[] = [];
+    for (const entry of getResolvedCatalog(periodeId, lang)) {
+        if (entry.unibas_id !== unibasId) continue;
+        for (const slot of entry.timeSlots) {
+            const key = `${slot.frequency}|${slot.weekday}|${slot.start}|${slot.end}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            times.push({ frequency: slot.frequency || null, weekday: slot.weekday, start_time: slot.start, end_time: slot.end });
+        }
+    }
+    times.sort((a, b) => a.weekday.localeCompare(b.weekday) || a.start_time.localeCompare(b.start_time));
+    return times;
 }
 
 export function getLectureDetail(unibasId: number, periodeId: string, lang: string): LectureDetail | null {
@@ -165,7 +177,7 @@ export function getLectureDetail(unibasId: number, periodeId: string, lang: stri
         modules = getModulesForLecture(db, unibasId);
     }
 
-    const recurringTimes = getRecurringTimesForLecture(db, unibasId);
+    const recurringTimes = getRecurringTimesForLecture(periodeId, lang, unibasId);
 
     if (!detail) {
         // No lecture_details row yet (details not imported), but we can

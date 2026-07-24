@@ -6,6 +6,7 @@
 // lectures resumes by skipping already-processed unibas_ids).
 import { getDb, setImportMeta, clearImportMeta } from "$lib/server/db";
 import { parseLectureDetails } from "./importer/parser";
+import { parseLeafTitle, stripHtml } from "./importer/catalogParser";
 import { fetchLectureHtml } from "./importer/unibas";
 import { invalidateLecturesCache } from "./lecturesCache";
 
@@ -53,8 +54,8 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
 
     const insertNode = db.prepare(`
         INSERT INTO lecture_catalog
-            (hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth, raw_title, is_leaf)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hierarchy_key) DO UPDATE SET
             unibas_id     = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.unibas_id ELSE excluded.unibas_id END,
             course_number = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.course_number ELSE excluded.course_number END,
@@ -64,117 +65,21 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
             lecturer      = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.lecturer ELSE excluded.lecturer END,
             parent_key    = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.parent_key ELSE excluded.parent_key END,
             node_type     = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.node_type ELSE excluded.node_type END,
-            depth         = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.depth ELSE excluded.depth END
+            depth         = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.depth ELSE excluded.depth END,
+            raw_title     = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.raw_title ELSE excluded.raw_title END,
+            is_leaf       = CASE WHEN lecture_catalog.unibas_id IS NOT NULL THEN lecture_catalog.is_leaf ELSE excluded.is_leaf END
     `);
-    const insertTime = db.prepare(`
-        INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
-        SELECT id, ?, ?, ?, ? FROM lecture_catalog WHERE hierarchy_key = ?
-    `);
-
     db.exec(`BEGIN TRANSACTION`);
     db.exec(`DELETE FROM lecture_times`);
     db.exec(`DELETE FROM lecture_catalog`);
     log("Bestehender Katalog gelöscht.");
 
-    function stripHtml(raw: string): string {
-        return raw
-            .replace(/<[^>]*>/g, '')
-            .replace(/&amp;/g, '&')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    function parseLeafTitle(raw: string): {
-        courseNumber: string;
-        typeLabel: string;
-        name: string;
-        credits: number;
-        unibasId: number | null;
-        lecturer: string | null;
-        timeSlots: { frequency: string; weekday: string; start: string; end: string }[];
-    } | null {
-        const decoded = raw
-            .replace(/&amp;/g, '&')
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'");
-
-        const headerMatch = decoded.match(
-            /^([\d]{2,6}-\d{2,3})\s*-\s*([^:]+):\s*(.+?)\s*\((\d+(?:[.,]\d+)?)\s*(?:KP|CP)\)/
-        );
-        if (!headerMatch) return null;
-
-        const courseNumber = headerMatch[1].trim();
-        const typeLabel = headerMatch[2].trim();
-        const name = headerMatch[3].trim();
-        const credits = parseFloat(headerMatch[4].replace(',', '.'));
-
-        const idMatch =
-            decoded.match(/data-watchlist="(\d+)"/) ??
-            decoded.match(/\?id=(\d+)/);
-        const unibasId = idMatch ? parseInt(idMatch[1]) : null;
-
-        const spanMatches = [...decoded.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)];
-        let lecturer: string | null = null;
-        const timeSlots: { frequency: string; weekday: string; start: string; end: string }[] = [];
-
-        for (const sp of spanMatches) {
-            // When there is no lecturer, the source markup still emits a leading
-            // "- " before the schedule (e.g. "- wöchentlich: Montag 16.15-20.00").
-            // Strip that bare dash so it isn't mistaken for a "Lecturer - Schedule" separator.
-            const text = sp[1].replace(/\s+/g, ' ').trim().replace(/^-\s+/, '');
-            const dashIdx = text.indexOf(' - ');
-            let lecturerPart = dashIdx >= 0 ? text.slice(0, dashIdx).trim() : text;
-            let schedulePart = dashIdx >= 0 ? text.slice(dashIdx + 3).trim() : '';
-
-            // No " - " separator found: this is either just a lecturer name, or —
-            // when there is no lecturer at all — a schedule string of the form
-            // "<Frequency>: <Weekday> HH.MM-HH.MM" or, for irregular/single-session
-            // courses, "<Frequency>: Siehe Einzeltermine" (no weekday/time at all).
-            // Detect either shape via the frequency keyword so it isn't stored as
-            // the lecturer.
-            if (!schedulePart) {
-                // A ":" with no " - " separator can only be a schedule string
-                // (e.g. "wöchentlich: Montag 16.15-20.00" or, for irregular/
-                // single-session courses, "unregelmässig: Siehe Einzeltermine").
-                // Real lecturer names never contain a colon, so this alone is
-                // enough to tell schedule-only spans apart — no need to match
-                // a fixed list of frequency keywords.
-                const freqOnlyMatch = lecturerPart.match(/^([^:]+):\s*(.+)$/);
-                if (freqOnlyMatch) {
-                    schedulePart = lecturerPart;
-                    lecturerPart = '';
-                }
-            }
-
-            if (!lecturer && lecturerPart) lecturer = lecturerPart;
-
-            if (schedulePart) {
-                const freqMatch = schedulePart.match(/^([^:]+):\s*(.*)$/);
-                const frequency = freqMatch ? freqMatch[1].trim() : '';
-                const rest = freqMatch ? freqMatch[2] : schedulePart;
-
-                const timeRegex = /([A-ZÄÖÜ][a-zäöüß]+)\s+(\d{2}[.:]\d{2})\s*-\s*(\d{2}[.:]\d{2})/g;
-                let m: RegExpExecArray | null;
-                while ((m = timeRegex.exec(rest)) !== null) {
-                    timeSlots.push({
-                        frequency,
-                        weekday: m[1],
-                        start: m[2].replace('.', ':'),
-                        end: m[3].replace('.', ':')
-                    });
-                }
-            }
-        }
-
-        return { courseNumber, typeLabel, name, credits, unibasId, lecturer, timeSlots };
-    }
 
     let nodeCount = 0;
     let insertErrors = 0;
     let leafCandidateCount = 0;   // nodes classified as isLeaf (not lazy, no children)
     let leafParsedCount = 0;      // of those, how many parseLeafTitle() actually matched
+    let timeSlotCount = 0;        // total time slots found across all parsed leaves (stats only — no longer persisted, see catalogResolver.ts)
     let sampleUnparsedShown = 0;  // debug: show a few leaf titles that failed to parse
     let firstParsedSample: { hk: number; unibasId: number } | null = null;
 
@@ -189,6 +94,7 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
             const parsed = isLeaf ? parseLeafTitle(node.title) : null;
             if (isLeaf && parsed) {
                 leafParsedCount++;
+                timeSlotCount += parsed.timeSlots.length;
                 if (!firstParsedSample && parsed.unibasId) {
                     firstParsedSample = { hk, unibasId: parsed.unibasId };
                 }
@@ -207,15 +113,16 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
             const nodeType = node.lazy ? "folder" : (unibasId ? "lecture" : "group");
 
             try {
+                // raw_title is the actual source of truth going forward — it's
+                // what catalogResolver.ts re-parses on every read, using
+                // whatever parseLeafTitle() looks like at read time. Everything
+                // else inserted here (unibasId, courseNumber, lecturer, ...) is
+                // only kept as an immediate best-effort snapshot/for debugging;
+                // the app itself no longer reads those columns.
                 insertNode.run(hk, unibasId, courseNumber, cleanTitle, typeLabel,
                     credits, lecturer,
-                    parentKey ? parseInt(parentKey) : null, nodeType, depth);
-
-                if (unibasId && parsed) {
-                    for (const slot of parsed.timeSlots) {
-                        insertTime.run(slot.frequency, slot.weekday, slot.start, slot.end, hk);
-                    }
-                }
+                    parentKey ? parseInt(parentKey) : null, nodeType, depth,
+                    isLeaf ? node.title : null, isLeaf ? 1 : 0);
             } catch (e: any) {
                 insertErrors++;
                 log(`  ✗ Insert fehlgeschlagen für Knoten ${hk} ("${cleanTitle}"): ${e?.message}`);
@@ -280,13 +187,11 @@ export async function runCatalogueImport(periodeId: string, lang: string, log: (
     try {
         const lectureRow = db.prepare(`SELECT COUNT(DISTINCT unibas_id) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
         const placementRow = db.prepare(`SELECT COUNT(*) as n FROM lecture_catalog WHERE unibas_id IS NOT NULL`).get() as { n: number } | undefined;
-        const timeRow = db.prepare(`SELECT COUNT(*) as n FROM lecture_times`).get() as { n: number } | undefined;
 
         const lectureCount = lectureRow?.n ?? 0;
         const placementCount = placementRow?.n ?? 0;
-        const timeCount = timeRow?.n ?? 0;
 
-        log(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
+        log(`✓ Katalog fertig: ${nodeCount} Knoten, ${lectureCount} eindeutige Vorlesungen (${placementCount} Platzierungen im Baum, inkl. Cross-Listings), ${timeSlotCount} Zeitslots.${insertErrors > 0 ? ` (${insertErrors} Insert-Fehler)` : ''}`);
 
         setImportMeta(db, {
             catalog_imported_at: new Date().toISOString(),
@@ -400,59 +305,14 @@ export async function runLecturesImport(
                 `).run(detail.id, ev.date, ev.startTime, ev.endTime, ev.room);
             }
 
-            // Backfill lecture_times/schedule from the detail page's own
-            // recurring-pattern table when the catalogue import didn't
-            // already capture a weekly slot for this lecture (e.g. some
-            // titles don't embed the schedule the way parseLeafTitle
-            // expects, even though the detail page clearly has one — the
-            // Details tab already showed this via a live re-parse; this
-            // makes the fast catalog list reflect it too, without needing
-            // a per-row live parse on every read).
-            if (parsed.recurringPattern.length > 0) {
-                try {
-                    const catalogRows = db.prepare(
-                        `SELECT id FROM lecture_catalog WHERE unibas_id = ?`
-                    ).all(row.unibas_id) as { id: number }[];
-
-                    for (const catalogRow of catalogRows) {
-                        const existingTimes = db.prepare(
-                            `SELECT COUNT(*) as n FROM lecture_times WHERE lecture_catalog_id = ?`
-                        ).get(catalogRow.id) as { n: number };
-                        if (existingTimes.n > 0) continue; // catalogue import already has real data
-
-                        const slots: { frequency: string; weekday: string; start: string; end: string }[] = [];
-                        for (const p of parsed.recurringPattern) {
-                            const timeMatch = p.time.match(/(\d{1,2})[.:](\d{2})\s*-\s*(\d{1,2})[.:](\d{2})/);
-                            if (!timeMatch) continue;
-                            slots.push({
-                                frequency: p.frequency,
-                                weekday: p.weekday,
-                                start: `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`,
-                                end: `${timeMatch[3].padStart(2, '0')}:${timeMatch[4]}`
-                            });
-                        }
-                        if (slots.length === 0) continue;
-
-                        for (const slot of slots) {
-                            db.prepare(`
-                                INSERT INTO lecture_times (lecture_catalog_id, frequency, weekday, start_time, end_time)
-                                VALUES (?, ?, ?, ?, ?)
-                            `).run(catalogRow.id, slot.frequency, slot.weekday, slot.start, slot.end);
-                        }
-
-                        const scheduleText = slots
-                            .map(s => `${s.frequency} ${s.weekday} ${s.start}-${s.end}`.trim())
-                            .join(' | ');
-                        db.prepare(`UPDATE lecture_catalog SET schedule = ? WHERE id = ?`).run(scheduleText, catalogRow.id);
-                    }
-                } catch (backfillErr: any) {
-                    // Best-effort enrichment only — the actual lecture detail
-                    // import above already succeeded, so don't count this
-                    // lecture as failed just because the schedule backfill
-                    // couldn't be written.
-                    log(`  (Hinweis: Schedule-Backfill für ${row.unibas_id} übersprungen: ${backfillErr?.message ?? backfillErr})`);
-                }
-            }
+            // Note: this used to also backfill lecture_times/schedule here
+            // from parsed.recurringPattern, for lectures whose catalogue tree
+            // title doesn't embed a weekly slot even though the detail page
+            // has one. That enrichment now happens on the fly in
+            // catalogResolver.ts (getResolvedCatalog) instead — it re-reads
+            // this same raw_html on every catalog resolve, so it always
+            // reflects the current parser instead of being frozen at
+            // whatever parseLectureDetails looked like during this import.
 
             success++;
             if (success % 10 === 0 || failed > 0) log(`✓ ${success}/${rows.length} — ${parsed.title}`);
@@ -474,4 +334,9 @@ export async function runLecturesImport(
         lectures_success_count: String(success),
         lectures_total_count: String(rows.length)
     });
+
+    // The resolved-catalog cache's schedule backfill reads lecture_details.raw_html
+    // (see catalogResolver.ts) — invalidate it so freshly imported/updated detail
+    // pages are picked up immediately instead of possibly serving a stale backfill.
+    invalidateLecturesCache(periodeId, lang);
 }

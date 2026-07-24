@@ -286,7 +286,9 @@ function initSchema(db: BunDatabase) {
         lecturer TEXT,
         parent_key INTEGER,
         node_type TEXT,
-        depth INTEGER DEFAULT 0
+        depth INTEGER DEFAULT 0,
+        raw_title TEXT,
+        is_leaf INTEGER DEFAULT 0
     );`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_lecture_catalog_unibas_id ON lecture_catalog(unibas_id);`);
 
@@ -300,10 +302,10 @@ function initSchema(db: BunDatabase) {
         end_time TEXT,
         FOREIGN KEY (lecture_catalog_id) REFERENCES lecture_catalog(id) ON DELETE CASCADE
     );`);
-    // SCHEDULE_SUBQUERY (lectureRepository.ts) looks up rows by
-    // lecture_catalog_id for every single row returned from lecture_catalog
-    // — without this index that's a full table scan of lecture_times per
-    // catalog row, which dominates load time for the (large) hierarchy view.
+    // Legacy table/index: catalogue import no longer writes to lecture_times
+    // (schedules are now resolved on the fly from lecture_catalog.raw_title,
+    // see catalogResolver.ts). Kept only so old database files with existing
+    // rows here don't break; nothing in the app reads from it anymore.
     db.exec(`CREATE INDEX IF NOT EXISTS idx_lecture_times_catalog_id ON lecture_times(lecture_catalog_id);`);
 
     db.exec(`
@@ -343,7 +345,7 @@ function initSchema(db: BunDatabase) {
 
     // Migrations
     const catalogCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog)`).all() as any[]).map(c => c.name));
-    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0'],['type_label','TEXT'],['schedule','TEXT']] as [string,string][]) {
+    for (const [col, type] of [['parent_key','INTEGER'],['node_type','TEXT'],['depth','INTEGER DEFAULT 0'],['type_label','TEXT'],['schedule','TEXT'],['raw_title','TEXT'],['is_leaf','INTEGER DEFAULT 0']] as [string,string][]) {
         if (!catalogCols.has(col)) db.exec(`ALTER TABLE lecture_catalog ADD COLUMN ${col} ${type}`);
     }
     const detailCols = new Set((db.prepare(`PRAGMA table_info(lecture_details)`).all() as any[]).map(c => c.name));
@@ -378,16 +380,20 @@ function initSchema(db: BunDatabase) {
                     parent_key INTEGER,
                     node_type TEXT,
                     depth INTEGER DEFAULT 0,
-                    schedule TEXT
+                    schedule TEXT,
+                    raw_title TEXT,
+                    is_leaf INTEGER DEFAULT 0
                 );
             `);
             const oldCols = new Set((db.prepare(`PRAGMA table_info(lecture_catalog_old)`).all() as any[]).map(c => c.name));
             const typeLabelSelect = oldCols.has('type_label') ? 'type_label' : 'NULL AS type_label';
             const scheduleSelect = oldCols.has('schedule') ? 'schedule' : 'NULL AS schedule';
+            const rawTitleSelect = oldCols.has('raw_title') ? 'raw_title' : 'NULL AS raw_title';
+            const isLeafSelect = oldCols.has('is_leaf') ? 'is_leaf' : '0 AS is_leaf';
             db.exec(`
                 INSERT INTO lecture_catalog
-                    (id, hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth, schedule)
-                SELECT id, hierarchy_key, unibas_id, course_number, title, ${typeLabelSelect}, credits, lecturer, parent_key, node_type, depth, ${scheduleSelect}
+                    (id, hierarchy_key, unibas_id, course_number, title, type_label, credits, lecturer, parent_key, node_type, depth, schedule, raw_title, is_leaf)
+                SELECT id, hierarchy_key, unibas_id, course_number, title, ${typeLabelSelect}, credits, lecturer, parent_key, node_type, depth, ${scheduleSelect}, ${rawTitleSelect}, ${isLeafSelect}
                 FROM lecture_catalog_old;
             `);
             db.exec(`DROP TABLE lecture_catalog_old;`);
